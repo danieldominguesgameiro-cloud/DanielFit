@@ -386,6 +386,11 @@ body.light-theme .tab.active { color: rgba(0,0,0,0.9); }
 .page { display:none; padding:10px 12px 110px; }
 .page.active { display:block; }
 
+@media (min-width: 768px) {
+  .page { padding: 20px 24px 48px; }
+  .page.active { display:block; }
+}
+
 /* ===== CARDS ===== */
 .card {
   background: var(--surface);
@@ -1151,6 +1156,176 @@ body.light-theme .ring-bg { stroke:rgba(0,0,0,0.08); }
 ::-webkit-scrollbar { width:2px; }
 ::-webkit-scrollbar-track { background:transparent; }
 ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.08); border-radius:2px; }
+
+/* ===== IPAD LAYOUT (768px+) ===== */
+@media (min-width: 768px) {
+  body {
+    overflow: auto;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 0;
+  }
+
+  #app-container {
+    max-width: 100%;
+    width: 100%;
+    height: 100vh;
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "sidebar header"
+      "sidebar content";
+    overflow: hidden;
+  }
+
+  /* Header spans full top right */
+  .header {
+    grid-area: header;
+    padding: 16px 20px 12px;
+  }
+
+  /* Bottom nav becomes left sidebar */
+  .bottom-nav {
+    grid-area: sidebar;
+    position: static;
+    transform: none;
+    width: 100%;
+    max-width: 100%;
+    height: 100vh;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    border-radius: 0;
+    padding: 24px 12px;
+    gap: 4px;
+    border-right: 1px solid rgba(255,255,255,0.07);
+    border-top: none;
+    border-left: none;
+    border-bottom: none;
+    background: rgba(22, 22, 22, 0.95);
+    box-shadow: none;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-sizing: border-box;
+    padding-top: 40px;
+  }
+
+  body.light-theme .bottom-nav {
+    background: rgba(242, 242, 247, 0.97);
+    border-right: 1px solid rgba(0,0,0,0.08);
+  }
+
+  /* Sidebar app title */
+  .bottom-nav::before {
+    content: 'DANIEL FIT';
+    display: block;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--muted2);
+    padding: 0 12px 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+
+  .tab {
+    flex: none;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 14px;
+    text-align: left;
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+  }
+
+  .tab-icon {
+    font-size: 18px;
+    display: block;
+    width: 24px;
+    text-align: center;
+  }
+
+  .tab.active {
+    background: rgba(200,255,0,0.1);
+  }
+
+  /* Content area */
+  .content {
+    grid-area: content;
+    overflow-y: auto;
+    height: 100%;
+  }
+
+  /* Pages become wider, with padding */
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px 24px 40px;
+  }
+
+  /* Today page: 2-column grid */
+  #page-today .macros-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  /* Modals: centered popup style */
+  .overlay {
+    align-items: center;
+  }
+
+  .modal {
+    max-width: 500px;
+    border-radius: 22px;
+    max-height: 85vh;
+  }
+
+  /* Week tab: wider day panel */
+  .day-detail-panel {
+    max-width: 100%;
+  }
+
+  /* Settings: 2 columns */
+  #page-reglages .settings-card {
+    display: inline-block;
+    width: calc(50% - 6px);
+    vertical-align: top;
+  }
+
+  /* Control page: wider stats grid */
+  #page-controle .content-inner {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    align-items: start;
+  }
+
+  /* Toast position for iPad */
+  .toast {
+    top: 30px;
+  }
+}
+
+@media (min-width: 1024px) {
+  #app-container {
+    grid-template-columns: 220px 1fr;
+  }
+
+  .page {
+    max-width: 1100px;
+    padding: 24px 32px 48px;
+  }
+
+  #page-today .macros-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
 </style>
 </head>
 <body>
