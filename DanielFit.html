@@ -864,7 +864,8 @@ body.light-theme .ring-bg { stroke:rgba(0,0,0,0.08); }
   padding: 0 18px;
 }
 .accordion-body.open {
-  max-height: 2000px;
+  max-height: 400px;
+  overflow-y: auto;
   padding-bottom: 14px;
 }
 .settings-title {
@@ -2182,11 +2183,22 @@ function delMeal(i) { S.meals[TODAY].splice(i,1); save(); renderToday(); }
 let editMealIdx = null;
 function editMeal(i) {
   const m = S.meals[TODAY][i];
-  // Find the food in S.foods to get per-100g data
   const food = S.foods.find(f => f.name === m.name);
-  if (!food) return; // custom or unknown, skip
+
+  if (!food) {
+    // Entrée éphémère (saisie rapide, recherche OFF) — éditer via ephemeralModal
+    editMealIdx = i;
+    document.getElementById('epName').value = m.name || '';
+    document.getElementById('epCal').value = Math.round(m.cal) || '';
+    document.getElementById('epProt').value = Math.round(m.prot * 10) / 10 || '';
+    document.getElementById('epCarb').value = Math.round(m.carb * 10) / 10 || '';
+    document.getElementById('epFat').value = Math.round(m.fat * 10) / 10 || '';
+    document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Modifier ✓';
+    openModal('ephemeralModal');
+    return;
+  }
+
   editMealIdx = i;
-  // Re-open the food modal in qty step directly
   selectedFood = food;
   document.getElementById('foodModalTitle').textContent = 'Modifier la quantité';
   document.getElementById('fStep1').style.display = 'none';
@@ -2207,7 +2219,6 @@ function editMeal(i) {
     document.getElementById('qtyInput').value = m.qty;
   }
   updateQtyPreview();
-  // Change confirm button to "Modifier"
   document.querySelector('#fStep2 .btn-confirm').textContent = 'Modifier ✓';
   openModal('foodModal');
 }
@@ -2378,14 +2389,24 @@ function renderDayPanel(d, rows) {
 
   let html = `<div class="day-detail-panel-title">${title}</div>`;
 
-  if (!meals.length && !sports.length && !creatineTaken) {
-    html += `<div class="day-detail-empty">Aucune donnée pour ce jour</div>`;
+  // Action buttons to add to this day
+  html += `<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <button onclick="openFoodModalForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;">🍽 + Repas</button>
+    <button onclick="openSportModalForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;">💪 + Sport</button>
+    <button onclick="toggleCreatineForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid ${creatineTaken ? 'var(--accent)' : 'var(--border)'};background:${creatineTaken ? 'var(--accent-dim)' : 'var(--surface2)'};color:${creatineTaken ? 'var(--accent)' : 'var(--muted2)'};font-size:12px;font-weight:600;cursor:pointer;">💊 ${creatineTaken ? 'Créatine ✓' : 'Créatine'}</button>
+  </div>`;
+
+  if (!meals.length && !sports.length) {
+    html += `<div class="day-detail-empty">Aucune donnée — ajoute via les boutons ci-dessus</div>`;
   } else {
     if (meals.length) {
       html += `<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);margin-bottom:6px;">🍽 Repas</div>`;
-      html += meals.map(m => `<div class="day-meal-row">
+      html += meals.map((m, i) => `<div class="day-meal-row">
         <div class="day-meal-name">${m.name} <span style="font-size:11px;color:var(--muted2)">${m.displayLabel||m.qty+'g'}</span></div>
-        <div class="day-meal-cal">${Math.round(m.cal)} kcal</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="day-meal-cal">${Math.round(m.cal)} kcal</div>
+          <button onclick="delMealForDay('${d}',${i})" style="background:none;border:none;color:var(--muted2);font-size:16px;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+        </div>
       </div>`).join('');
       const totalCal = meals.reduce((s,m) => s+m.cal, 0);
       const totalProt = meals.reduce((s,m) => s+m.prot, 0);
@@ -2396,14 +2417,13 @@ function renderDayPanel(d, rows) {
     }
     if (sports.length) {
       html += `<div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted2);margin-bottom:6px;">💪 Sport</div>`;
-      html += sports.map(s => `<div class="day-sport-row">
+      html += sports.map((s, i) => `<div class="day-sport-row">
         <div class="day-sport-name">${s.emoji||'🏃'} ${s.name}</div>
-        <div class="day-sport-cal">~${s.cal} kcal</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="day-sport-cal">~${s.cal} kcal</div>
+          <button onclick="delSportForDay('${d}',${i})" style="background:none;border:none;color:var(--muted2);font-size:16px;cursor:pointer;padding:0 4px;line-height:1;">×</button>
+        </div>
       </div>`).join('');
-    }
-    // Creatine
-    if (S.creatine && S.creatine[d]) {
-      html += `<div style="margin-top:8px;font-size:12px;color:var(--muted2);">💊 Créatine prise</div>`;
     }
   }
 
@@ -2411,7 +2431,54 @@ function renderDayPanel(d, rows) {
   panel.style.display = 'block';
 }
 
-function renderPoids() {
+// ===== EDITION JOURS PASSÉS =====
+let activeDayEdit = null; // date string du jour en cours d'édition depuis la semaine
+
+function openFoodModalForDay(d) {
+  activeDayEdit = d;
+  openFoodModal();
+}
+
+function openSportModalForDay(d) {
+  activeDayEdit = d;
+  openSportModal();
+}
+
+function toggleCreatineForDay(d) {
+  if (!S.creatine) S.creatine = {};
+  S.creatine[d] = !S.creatine[d];
+  save();
+  // Refresh today UI if it's today
+  if (d === TODAY) {
+    const circle = document.getElementById('creatineCircle');
+    const rem = document.getElementById('creatineReminder');
+    if (S.creatine[d]) { circle.classList.add('done'); rem.style.opacity='0.5'; }
+    else { circle.classList.remove('done'); rem.style.opacity='1'; }
+  }
+  renderWeek();
+  showToast(S.creatine[d] ? 'Créatine ajoutée ✓' : 'Créatine retirée');
+}
+
+function delMealForDay(d, i) {
+  if (!S.meals[d]) return;
+  S.meals[d].splice(i, 1);
+  save();
+  if (d === TODAY) renderToday();
+  renderWeek();
+}
+
+function delSportForDay(d, i) {
+  if (!S.sportLog[d]) return;
+  S.sportLog[d].splice(i, 1);
+  save();
+  if (d === TODAY) { renderSportList(); updateMacros(); }
+  renderWeek();
+}
+
+function getActiveMealDay() { return activeDayEdit || TODAY; }
+function getActiveSportDay() { return activeDayEdit || TODAY; }
+
+
   renderProjections();
   const w = S.weights;
   const latest = w.length ? w[w.length-1].val : START_WEIGHT;
@@ -2906,9 +2973,11 @@ function confirmPhotoFood() {
 
 // ===== SAISIE RAPIDE ÉPHÉMÈRE =====
 function openEphemeralFood() {
+  editMealIdx = null;
   closeModal('foodModal');
   setTimeout(() => {
     ['epName','epCal','epProt','epCarb','epFat'].forEach(id => document.getElementById(id).value = '');
+    document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
     openModal('ephemeralModal');
   }, 150);
 }
@@ -2922,14 +2991,21 @@ function confirmEphemeralFood() {
   if (!cal) return;
   const entry = { name, qty: 100, displayLabel: 'saisie rapide', cal, prot, carb, fat };
   if (!S.meals[TODAY]) S.meals[TODAY] = [];
-  S.meals[TODAY].push(entry);
+  if (editMealIdx !== null) {
+    S.meals[TODAY][editMealIdx] = entry;
+    editMealIdx = null;
+    showToast(name + ' modifié ✓');
+  } else {
+    S.meals[TODAY].push(entry);
+    showToast(name + ' ajouté ✓');
+  }
+  document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
   save(); closeModal('ephemeralModal'); renderToday();
-  showToast(name + ' ajouté ✓');
 }
 
-// ===== SCAN CODE-BARRES (ZXing temps réel) =====
-let zxingReader = null;
+// ===== SCAN CODE-BARRES =====
 let scannerStream = null;
+let zxingContinuous = null;
 
 async function startBarcodeScanner() {
   const modal = document.getElementById('barcodeScanModal');
@@ -2939,65 +3015,35 @@ async function startBarcodeScanner() {
   status.style.color = 'rgba(255,255,255,0.6)';
 
   try {
-    // Load ZXing dynamically
     if (!window.ZXing) {
       await new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = 'https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js';
-        s.onload = resolve;
-        s.onerror = reject;
+        s.onload = resolve; s.onerror = reject;
         document.head.appendChild(s);
       });
     }
 
     const video = document.getElementById('barcodeVideo');
-    zxingReader = new ZXing.BrowserMultiFormatReader();
-
-    // Get camera stream (back camera)
-    scannerStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
-    });
-    video.srcObject = scannerStream;
-    await video.play();
+    const reader = new ZXing.BrowserMultiFormatReader();
+    zxingContinuous = reader;
 
     status.textContent = 'Cadre le code-barres dans le rectangle';
 
-    // Scan loop
-    const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const hints = new Map();
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-      ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
-      ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.UPC_E,
-      ZXing.BarcodeFormat.CODE_128
-    ]);
-    const multiReader = new ZXing.MultiFormatReader();
-    multiReader.setHints(hints);
-
-    let scanning = true;
-    const scan = () => {
-      if (!scanning || !document.getElementById('barcodeScanModal').classList.contains('open')) return;
-      if (video.readyState === video.HAVE_ENOUGH_DATA) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        ctx.drawImage(video, 0, 0);
-        try {
-          const luminance = new ZXing.HTMLCanvasElementLuminanceSource(canvas);
-          const binaryBitmap = new ZXing.BinaryBitmap(new ZXing.HybridBinarizer(luminance));
-          const result = multiReader.decode(binaryBitmap);
-          if (result) {
-            scanning = false;
-            status.style.color = 'var(--accent)';
-            status.textContent = '✅ Code détecté !';
-            stopBarcodeScanner();
-            fetchProductByBarcode(result.getText());
-            return;
-          }
-        } catch(e) { /* pas encore de code, on continue */ }
+    let detected = false;
+    await reader.decodeFromConstraints(
+      { video: { facingMode: 'environment' } },
+      video,
+      (result, err) => {
+        if (result && !detected) {
+          detected = true;
+          status.style.color = 'var(--accent)';
+          status.textContent = '✅ Code détecté !';
+          stopBarcodeScanner();
+          fetchProductByBarcode(result.getText());
+        }
       }
-      requestAnimationFrame(scan);
-    };
-    requestAnimationFrame(scan);
+    );
 
   } catch(e) {
     status.style.color = '#ff6b6b';
@@ -3012,11 +3058,16 @@ async function startBarcodeScanner() {
 function stopBarcodeScanner() {
   const modal = document.getElementById('barcodeScanModal');
   modal.classList.remove('open');
-  if (scannerStream) {
-    scannerStream.getTracks().forEach(t => t.stop());
-    scannerStream = null;
+  if (zxingContinuous) {
+    try { zxingContinuous.reset(); } catch(e) {}
+    zxingContinuous = null;
   }
-  zxingReader = null;
+  // Stop all video tracks
+  const video = document.getElementById('barcodeVideo');
+  if (video && video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
 }
 
 function manualBarcodeEntry() {
@@ -3154,7 +3205,10 @@ function saveCustomSport() {
 
 function openFoodModal() {
   editMealIdx = null;
-  document.getElementById('foodModalTitle').textContent = 'Ajouter un repas';
+  if (!activeDayEdit) activeDayEdit = null; // keep if set by openFoodModalForDay
+  document.getElementById('foodModalTitle').textContent = activeDayEdit && activeDayEdit !== TODAY
+    ? 'Ajouter repas — ' + fmtDate(activeDayEdit)
+    : 'Ajouter un repas';
   document.getElementById('fStep1').style.display = 'block';
   document.getElementById('fStep2').classList.remove('visible');
   document.querySelector('#fStep2 .btn-confirm').textContent = 'Ajouter au repas';
@@ -3247,18 +3301,20 @@ function confirmAddFood() {
     carb: selectedFood.carb100 * m,
     fat: selectedFood.fat100 * m,
   };
-  if (!S.meals[TODAY]) S.meals[TODAY] = [];
+  const targetDay = activeDayEdit || TODAY;
+  if (!S.meals[targetDay]) S.meals[targetDay] = [];
   if (editMealIdx !== null) {
-    S.meals[TODAY][editMealIdx] = entry;
+    S.meals[targetDay][editMealIdx] = entry;
     showToast(selectedFood.name + ' modifié ✓');
     editMealIdx = null;
   } else {
-    S.meals[TODAY].push(entry);
+    S.meals[targetDay].push(entry);
     showToast(selectedFood.name + ' ajouté ✓');
   }
-  // Reset confirm button label
   document.querySelector('#fStep2 .btn-confirm').textContent = 'Ajouter au repas';
-  save(); closeModal('foodModal'); renderToday();
+  activeDayEdit = null;
+  save(); closeModal('foodModal');
+  if (targetDay === TODAY) renderToday(); else renderWeek();
 }
 
 let selectedSport = null;
@@ -3315,12 +3371,15 @@ function backToSportList() {
 
 function addSportWithDuration(min, cal) {
   if (!selectedSport) return;
-  if (!S.sportLog[TODAY]) S.sportLog[TODAY] = [];
-  S.sportLog[TODAY].push({
+  const targetDay = activeDayEdit || TODAY;
+  if (!S.sportLog[targetDay]) S.sportLog[targetDay] = [];
+  S.sportLog[targetDay].push({
     name: selectedSport.name + ' ' + min + 'min',
     cal, emoji: selectedSport.emoji||'🏃'
   });
-  save(); closeModal('sportModal'); renderSportList(); updateMacros();
+  activeDayEdit = null;
+  save(); closeModal('sportModal');
+  if (targetDay === TODAY) { renderSportList(); updateMacros(); } else renderWeek();
   showToast(selectedSport.name + ' ' + min + 'min ajouté ✓');
 }
 
