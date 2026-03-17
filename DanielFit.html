@@ -1963,52 +1963,61 @@ function save() {
 }
 
 async function loadState() {
-  // Load from localStorage immediately so app starts fast
+  // 1. Load from localStorage first — always works offline
   try {
     const raw = localStorage.getItem('danielfit_v3');
     if (raw) S = Object.assign({}, S, JSON.parse(raw));
   } catch(e) {}
 
-  // Then try Firebase in background (only on real device, not in Claude iframe)
+  // 2. Try Firebase (non-blocking, with timeout)
   if (!IS_IFRAME) {
-    try { await window._firebaseReady; } catch(e) {}
     try {
-      if (typeof firebase === 'undefined') throw new Error('no firebase');
-      firebase.initializeApp({
-        apiKey: "AIzaSyDpUAcZ_IcEgKiGQtPMnutAGa7UTKwHSBQ",
-        authDomain: "danielfit-80ecb.firebaseapp.com",
-        projectId: "danielfit-80ecb",
-        storageBucket: "danielfit-80ecb.firebasestorage.app",
-        messagingSenderId: "206574578719",
-        appId: "1:206574578719:web:91e4e2cf8143c99307792a"
-      });
       await Promise.race([
-        firebase.auth().signInAnonymously(),
-        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 6000))
+        window._firebaseReady,
+        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 3000))
       ]);
-      const doc = await Promise.race([
-        firebase.firestore().collection('users').doc(DOC_ID).get(),
-        new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 6000))
-      ]);
-      firebaseOk = true;
-      if (doc.exists) {
-        S = Object.assign({}, S, doc.data());
-      } else {
-        firebase.firestore().collection('users').doc(DOC_ID).set(JSON.parse(JSON.stringify(S))).catch(()=>{});
+      if (typeof firebase !== 'undefined') {
+        // Only initialize once
+        if (!firebase.apps || !firebase.apps.length) {
+          firebase.initializeApp({
+            apiKey: "AIzaSyDpUAcZ_IcEgKiGQtPMnutAGa7UTKwHSBQ",
+            authDomain: "danielfit-80ecb.firebaseapp.com",
+            projectId: "danielfit-80ecb",
+            storageBucket: "danielfit-80ecb.firebasestorage.app",
+            messagingSenderId: "206574578719",
+            appId: "1:206574578719:web:91e4e2cf8143c99307792a"
+          });
+        }
+        await Promise.race([
+          firebase.auth().signInAnonymously(),
+          new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 5000))
+        ]);
+        const doc = await Promise.race([
+          firebase.firestore().collection('users').doc(DOC_ID).get(),
+          new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 5000))
+        ]);
+        firebaseOk = true;
+        if (doc.exists) {
+          S = Object.assign({}, S, doc.data());
+        } else {
+          firebase.firestore().collection('users').doc(DOC_ID).set(JSON.parse(JSON.stringify(S))).catch(()=>{});
+        }
       }
     } catch(e) {
       firebaseOk = false;
+      // Firebase failed — localStorage data already loaded above, continue normally
     }
   }
 
-  // Sanitize
+  // 3. Sanitize — never overwrite existing user data
   if (!S.foods || !S.foods.length) S.foods = [...DEFAULT_FOODS];
-  S.sports = [...DEFAULT_SPORTS];
+  if (!S.sports || !S.sports.length) S.sports = [...DEFAULT_SPORTS]; // fixed: was always overwriting
   if (!S.meals) S.meals = {};
   if (!S.sportLog) S.sportLog = {};
   if (!S.weights || !S.weights.length) S.weights = [{date: START_DATE, val: START_WEIGHT}];
   if (!S.creatine) S.creatine = {};
   if (!S.muscleLog) S.muscleLog = {};
+  if (!S.settings) S.settings = { tdee:2300, protTarget:185, goalWeight:85, maxCal:1200 };
 
   init();
 }
@@ -2478,7 +2487,7 @@ function delSportForDay(d, i) {
 function getActiveMealDay() { return activeDayEdit || TODAY; }
 function getActiveSportDay() { return activeDayEdit || TODAY; }
 
-
+function renderPoids() {
   renderProjections();
   const w = S.weights;
   const latest = w.length ? w[w.length-1].val : START_WEIGHT;
