@@ -1557,7 +1557,10 @@ body.light-theme .ring-bg { stroke:rgba(0,0,0,0.08); }
       <div id="muscleGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:12px;">
-      <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);margin-bottom:16px;">📅 Cette semaine</div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
+        <div style="font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--muted2);">📅 Cette semaine</div>
+        <button onclick="openMusclePastModal()" style="padding:6px 12px;border-radius:10px;border:1px solid var(--border);background:var(--surface2);color:var(--muted2);font-size:11px;font-weight:600;cursor:pointer;">✏️ Modifier un jour</button>
+      </div>
       <div id="muscleWeekSummary"></div>
     </div>
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:18px;margin-bottom:12px;">
@@ -2508,7 +2511,10 @@ function renderPoids() {
     return `<div class="history-item">
       <span class="history-date">${fmtDate(item.date)}</span>
       <span class="history-val">${item.val} kg</span>
-      ${diffHtml}
+      <div style="display:flex;align-items:center;gap:8px;">
+        ${diffHtml}
+        <button onclick="deleteWeight(${i})" style="background:none;border:none;color:var(--muted2);font-size:18px;cursor:pointer;padding:0 4px;line-height:1;opacity:0.5;">×</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -2693,7 +2699,13 @@ function renderProjections() {
 function logWeight() {
   const val = parseFloat(document.getElementById('weightInput').value);
   if (!val || val < 40 || val > 250) return;
-  S.weights.push({date: TODAY, val});
+  // Replace if entry already exists for today (no duplicates)
+  const existingIdx = S.weights.findIndex(w => w.date === TODAY);
+  if (existingIdx >= 0) {
+    S.weights[existingIdx].val = val;
+  } else {
+    S.weights.push({date: TODAY, val});
+  }
   if (S.weights.length > 90) S.weights = S.weights.slice(-90);
   save();
   document.getElementById('weightInput').value = '';
@@ -2705,6 +2717,16 @@ function logWeight() {
     wr.style.opacity = '0.5';
   }
   showToast(val + ' kg enregistré ✓');
+}
+
+function deleteWeight(i) {
+  // i is index in reversed array, convert to original index
+  const origIdx = S.weights.length - 1 - i;
+  if (origIdx < 0) return;
+  const entry = S.weights[origIdx];
+  S.weights.splice(origIdx, 1);
+  save(); updateHeader(); renderPoids();
+  showToast(entry.val + ' kg supprimé');
 }
 
 const MUSCLE_GROUPS = [
@@ -2816,6 +2838,76 @@ function toggleMuscle(muscleId) {
   else S.muscleLog[TODAY].push(muscleId);
   if (S.muscleLog[TODAY].length === 0) delete S.muscleLog[TODAY];
   save(); renderMuscu();
+  const mg = MUSCLE_GROUPS.find(m => m.id === muscleId);
+  if (mg) showToast(idx >= 0 ? mg.name + ' retiré' : mg.name + ' ✓');
+}
+
+let musclePastDay = null;
+
+function openMusclePastModal() {
+  // Build list of last 14 days (excluding today)
+  const dayNames = ['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'];
+  const months = ['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  const days = [];
+  for (let i = 1; i <= 14; i++) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    const str = d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    days.push({ str, label: dayNames[d.getDay()] + ' ' + d.getDate() + ' ' + months[d.getMonth()] });
+  }
+  const list = document.getElementById('musclePastDayList');
+  list.style.display = 'flex';
+  document.getElementById('musclePastGrid').style.display = 'none';
+  list.innerHTML = days.map(d => {
+    const hasMuscles = S.muscleLog && S.muscleLog[d.str] && S.muscleLog[d.str].length;
+    const tags = hasMuscles ? S.muscleLog[d.str].map(mid => {
+      const mg = MUSCLE_GROUPS.find(m => m.id === mid);
+      return mg ? `<span style="font-size:10px;color:var(--muted2);">${mg.emoji}</span>` : '';
+    }).join('') : '';
+    return `<div onclick="openMuscleDayEdit('${d.str}','${d.label}')" style="display:flex;justify-content:space-between;align-items:center;padding:12px 14px;border-radius:14px;background:var(--surface2);border:1px solid var(--border);cursor:pointer;">
+      <div style="font-size:13px;font-weight:500;color:var(--text);">${d.label}</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="display:flex;gap:2px;">${tags}</span>
+        <span style="color:var(--muted2);font-size:18px;">›</span>
+      </div>
+    </div>`;
+  }).join('');
+  openModal('musclePastModal');
+}
+
+function openMuscleDayEdit(dateStr, label) {
+  musclePastDay = dateStr;
+  document.getElementById('musclePastDayList').style.display = 'none';
+  const grid = document.getElementById('musclePastGrid');
+  grid.style.display = 'block';
+  document.getElementById('musclePastDayTitle').textContent = label;
+  renderMusclePastGrid();
+}
+
+function renderMusclePastGrid() {
+  if (!musclePastDay) return;
+  if (!S.muscleLog) S.muscleLog = {};
+  const dayMuscles = S.muscleLog[musclePastDay] || [];
+  document.getElementById('musclePastMuscleGrid').innerHTML = MUSCLE_GROUPS.map(m => {
+    const done = dayMuscles.includes(m.id);
+    return `<div onclick="toggleMuscleForDay('${m.id}')" style="
+      background:${done ? 'rgba(168,255,62,0.08)' : 'var(--surface2)'};
+      border:1px solid ${done ? 'rgba(168,255,62,0.3)' : 'var(--border)'};
+      border-radius:14px;padding:14px 10px;text-align:center;cursor:pointer;transition:all 0.2s;">
+      <div style="font-size:24px;margin-bottom:6px;">${m.emoji}</div>
+      <div style="font-size:13px;font-weight:600;color:${done ? 'var(--accent)' : 'var(--text2)'};">${m.name}</div>
+      <div style="font-size:10px;color:${done?'var(--accent)':'var(--muted2)'};margin-top:4px;">${done ? '✓ fait' : 'à faire'}</div>
+    </div>`;
+  }).join('');
+}
+
+function toggleMuscleForDay(muscleId) {
+  if (!musclePastDay) return;
+  if (!S.muscleLog[musclePastDay]) S.muscleLog[musclePastDay] = [];
+  const idx = S.muscleLog[musclePastDay].indexOf(muscleId);
+  if (idx >= 0) S.muscleLog[musclePastDay].splice(idx, 1);
+  else S.muscleLog[musclePastDay].push(muscleId);
+  if (S.muscleLog[musclePastDay].length === 0) delete S.muscleLog[musclePastDay];
+  save(); renderMusclePastGrid(); renderMuscu();
   const mg = MUSCLE_GROUPS.find(m => m.id === muscleId);
   if (mg) showToast(idx >= 0 ? mg.name + ' retiré' : mg.name + ' ✓');
 }
@@ -3647,5 +3739,24 @@ function showToast(msg) {
 loadState();
 </script>
 </div><!-- #app-container -->
+<!-- MODAL: Modifier séance passée -->
+<div class="overlay" id="musclePastModal" onclick="closeModalOutside(event,'musclePastModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">💪 Modifier une séance</div>
+      <button class="modal-close" onclick="closeModal('musclePastModal')">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;">Choisis le jour à modifier :</div>
+    <div id="musclePastDayList" style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px;"></div>
+    <div id="musclePastGrid" style="display:none;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+        <button onclick="document.getElementById('musclePastGrid').style.display='none';document.getElementById('musclePastDayList').style.display='flex';" style="background:none;border:none;color:var(--accent);font-size:13px;font-weight:600;cursor:pointer;padding:0;">← Retour</button>
+        <div id="musclePastDayTitle" style="font-size:13px;font-weight:700;color:var(--text);"></div>
+      </div>
+      <div id="musclePastMuscleGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;"></div>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
