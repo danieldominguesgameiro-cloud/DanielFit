@@ -1694,8 +1694,9 @@ function previewSteps() {
   const res = document.getElementById('stepsResult');
   if (v <= 0) { res.textContent = ''; return; }
   const weight = S.weights.length ? S.weights[S.weights.length-1].val : (S.profile ? S.profile.startWeight : 80);
-  const km = (v * 0.82) / 1000;
-  const cal = Math.round(0.5 * weight * km);
+  const km = (v * 0.78) / 1000;
+  // Calibré sur données Apple Santé (énergie active) : ≈ 0.314 × poids(kg) × pas/1000
+  const cal = Math.round(0.314 * weight * v / 1000);
   res.textContent = `≈ ${cal} kcal · ${km.toFixed(1)} km`;
 }
 
@@ -1723,9 +1724,8 @@ function getStepsCalories(date) {
   if (!S.steps || !S.steps[date]) return 0;
   const steps = S.steps[date];
   const weight = S.weights.length ? S.weights[S.weights.length-1].val : (S.profile ? S.profile.startWeight : 80);
-  // Marche soutenue (~6 km/h) : foulée ~0.82 m → km ; kcal ≈ 0.5 × poids(kg) × km
-  const km = (steps * 0.82) / 1000;
-  return Math.round(0.5 * weight * km);
+  // Calibré sur données Apple Santé (énergie active) : ≈ 0.314 × poids(kg) × pas/1000
+  return Math.round(0.314 * weight * steps / 1000);
 }
 
 function getDayMacros(date) {
