@@ -1185,12 +1185,15 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     </div>
     <div id="fStep1">
       <!-- Boutons rapides -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
-        <button onclick="openPhotoAnalysis()" style="padding:10px 8px;border-radius:12px;border:1.5px dashed var(--accent);background:var(--accent-dim);color:var(--accent);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-          <span style="font-size:16px">🔍</span> Chercher plat
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:12px;">
+        <button onclick="openPhotoAnalysis()" style="padding:11px 6px;border-radius:13px;border:1.5px dashed var(--accent);background:var(--accent-dim);color:var(--accent);font-weight:700;font-size:11.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+          <span style="font-size:18px">🔍</span> Chercher
         </button>
-        <button onclick="openEphemeralFood()" style="padding:10px 8px;border-radius:12px;border:1.5px dashed var(--muted2);background:var(--surface2);color:var(--text);font-weight:600;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;">
-          <span style="font-size:16px">✏️</span> Saisie rapide
+        <button onclick="scanBarcodeForMeal()" style="padding:11px 6px;border-radius:13px;border:1.5px dashed var(--blue);background:var(--blue-dim);color:var(--blue);font-weight:700;font-size:11.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+          <span style="font-size:18px">📷</span> Scanner
+        </button>
+        <button onclick="openEphemeralFood()" style="padding:11px 6px;border-radius:13px;border:1.5px dashed var(--muted2);background:var(--surface2);color:var(--text);font-weight:700;font-size:11.5px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;">
+          <span style="font-size:18px">✏️</span> Saisie
         </button>
       </div>
       <div class="search-box">
@@ -1289,6 +1292,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
       <button class="modal-close" onclick="closeModal('ephemeralModal')">✕</button>
     </div>
     <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6;">Ajoute un aliment <strong style="color:var(--text)">une seule fois</strong>, sans le sauvegarder dans ta liste.</div>
+    <div id="epScanHint" style="display:none;font-size:11.5px;color:var(--blue);background:var(--blue-dim);border-radius:12px;padding:10px 12px;margin-bottom:13px;line-height:1.5;">📷 Produit scanné — les valeurs affichées sont <strong>pour 100 g</strong>. Ajuste-les selon la quantité que tu as mangée (ex : ×1,5 pour 150 g).</div>
     <div class="form-group"><label>Nom</label><input class="form-input" id="epName" placeholder="Ex: Resto du midi, kebab..."></div>
     <div class="form-grid">
       <div class="form-group"><label>Kcal totales</label><input class="form-input" id="epCal" type="number" placeholder="600" oninput="updateEphemeralPreview()"></div>
@@ -1826,7 +1830,10 @@ function editMeal(i) {
 
   if (!food) {
     // Entrée éphémère (saisie rapide, recherche OFF) — éditer via ephemeralModal
+    activeDayEdit = null; // editMeal édite le jour courant (aujourd'hui)
     editMealIdx = i;
+    const hint = document.getElementById('epScanHint');
+    if (hint) hint.style.display = 'none';
     document.getElementById('epName').value = m.name || '';
     document.getElementById('epCal').value = Math.round(m.cal) || '';
     document.getElementById('epProt').value = Math.round(m.prot * 10) / 10 || '';
@@ -2902,6 +2909,8 @@ function openEphemeralFood() {
   closeModal('foodModal');
   setTimeout(() => {
     ['epName','epCal','epProt','epCarb','epFat'].forEach(id => document.getElementById(id).value = '');
+    const hint = document.getElementById('epScanHint');
+    if (hint) hint.style.display = 'none';
     document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
     openModal('ephemeralModal');
   }, 150);
@@ -2915,22 +2924,34 @@ function confirmEphemeralFood() {
   const fat = parseFloat(document.getElementById('epFat').value) || 0;
   if (!cal) return;
   const entry = { name, qty: 100, displayLabel: 'saisie rapide', cal, prot, carb, fat };
-  if (!S.meals[TODAY]) S.meals[TODAY] = [];
+  const day = activeDayEdit || TODAY;
+  if (!S.meals[day]) S.meals[day] = [];
   if (editMealIdx !== null) {
-    S.meals[TODAY][editMealIdx] = entry;
+    S.meals[day][editMealIdx] = entry;
     editMealIdx = null;
     showToast(name + ' modifié ✓');
   } else {
-    S.meals[TODAY].push(entry);
+    S.meals[day].push(entry);
     showToast(name + ' ajouté ✓');
   }
   document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
-  save(); closeModal('ephemeralModal'); renderToday();
+  save(); closeModal('ephemeralModal');
+  renderToday();
+  if (typeof renderWeek === 'function') renderWeek();
+  if (activeDayEdit) { activeDayEdit = null; }
 }
 
 // ===== SCAN CODE-BARRES =====
 let scannerStream = null;
 let zxingContinuous = null;
+let barcodeForMeal = false; // true = ajout ponctuel au repas (sans enregistrer dans Mes aliments)
+
+function scanBarcodeForMeal() {
+  barcodeForMeal = true;
+  // activeDayEdit reste tel quel (jour en cours d'édition ou aujourd'hui)
+  closeModal('foodModal');
+  setTimeout(() => startBarcodeScanner(), 200);
+}
 
 async function startBarcodeScanner() {
   const modal = document.getElementById('barcodeScanModal');
@@ -3004,6 +3025,33 @@ function manualBarcodeEntry() {
 }
 
 async function fetchProductByBarcode(barcode) {
+  // Mode ponctuel : on ajoute direct au repas via la saisie rapide, sans enregistrer
+  if (barcodeForMeal) {
+    try {
+      const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${barcode}.json`);
+      const data = await res.json();
+      if (data.status === 1 && data.product) {
+        const p = data.product;
+        const n = p.nutriments || {};
+        const name = p.product_name_fr || p.product_name || p.generic_name_fr || p.generic_name || 'Produit scanné';
+        const cal100 = Math.round(n['energy-kcal_100g'] || n['energy-kcal'] || 0);
+        const prot100 = Math.round((n['proteins_100g'] || 0) * 10) / 10;
+        const carb100 = Math.round((n['carbohydrates_100g'] || 0) * 10) / 10;
+        const fat100 = Math.round((n['fat_100g'] || 0) * 10) / 10;
+        // Ouvre la saisie rapide pré-remplie pour 100 g, l'utilisateur ajuste la quantité
+        openScannedFoodEntry(name, cal100, prot100, carb100, fat100);
+      } else {
+        barcodeForMeal = false;
+        showToast('⚠️ Produit introuvable');
+        openFoodModal();
+      }
+    } catch(e) {
+      barcodeForMeal = false;
+      showToast('❌ Erreur réseau');
+      openFoodModal();
+    }
+    return;
+  }
   const status = document.getElementById('barcodeStatus');
   status.style.display = 'block';
   status.style.color = '';
@@ -3034,6 +3082,25 @@ async function fetchProductByBarcode(barcode) {
     status.style.color = 'var(--red)';
     status.textContent = '❌ Erreur réseau. Vérifie ta connexion.';
   }
+}
+
+// Saisie d'un produit scanné (ponctuel) : quantité ajustable, calcul auto, non enregistré
+let scannedFood = null;
+function openScannedFoodEntry(name, cal100, prot100, carb100, fat100) {
+  scannedFood = { name, cal100, prot100, carb100, fat100 };
+  setTimeout(() => {
+    document.getElementById('epName').value = name;
+    // On pré-remplit pour 100 g ; l'utilisateur peut ajuster directement les valeurs
+    document.getElementById('epCal').value = cal100;
+    document.getElementById('epProt').value = prot100;
+    document.getElementById('epCarb').value = carb100;
+    document.getElementById('epFat').value = fat100;
+    const hint = document.getElementById('epScanHint');
+    if (hint) hint.style.display = 'block';
+    document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
+    openModal('ephemeralModal');
+    barcodeForMeal = false;
+  }, 250);
 }
 
 function openAddFoodSettingsModal() {
@@ -3465,20 +3532,15 @@ function drawWeightChart() {
     real.forEach((p, i) => i === 0 ? ctx.moveTo(xOf(p.d), yOf(p.v)) : ctx.lineTo(xOf(p.d), yOf(p.v)));
     ctx.stroke();
 
-    // Dots + value labels on real data points
+    // Dots on real data points (no value labels — keeps the chart clean)
     real.forEach(p => {
       ctx.beginPath();
-      ctx.arc(xOf(p.d), yOf(p.v), 4, 0, Math.PI * 2);
+      ctx.arc(xOf(p.d), yOf(p.v), 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#18c29c';
       ctx.fill();
       ctx.strokeStyle = isLight ? '#271d39' : '#fff';
       ctx.lineWidth = 1.5;
       ctx.stroke();
-      // Value label above dot
-      ctx.fillStyle = '#18c29c';
-      ctx.font = 'bold 10px DM Sans, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(p.v.toFixed(1), xOf(p.d), yOf(p.v) - 8);
     });
   }
 }
