@@ -380,6 +380,9 @@ body.light-theme .bottom-nav { background: rgba(39,29,57,0.85); border-color: rg
 
 /* Steps card */
 .steps-card { background: var(--card-glass); -webkit-backdrop-filter: var(--card-blur); backdrop-filter: var(--card-blur); border:none; border-radius:var(--radius-sm); padding:16px 17px; box-shadow: var(--shadow-card); }
+.act-mode-row { display:flex; gap:7px; margin-bottom:14px; background:var(--surface2); padding:4px; border-radius:14px; }
+.act-mode-btn { flex:1; padding:9px 6px; border:none; border-radius:11px; background:transparent; color:var(--muted2); font-family:var(--font-body); font-size:12.5px; font-weight:700; cursor:pointer; transition:all 0.2s; }
+.act-mode-btn.active { background:var(--surface); color:var(--text); box-shadow:var(--shadow-sm); }
 .steps-row { display:flex; gap:10px; }
 .steps-input {
   flex:1; background: var(--surface2); border:2px solid transparent; border-radius:15px; padding:13px; color:var(--text);
@@ -957,15 +960,36 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     <div id="sportList"></div>
 
     <div class="section-head" style="margin-top:16px;">
-      <div class="section-title">👟 Pas du jour</div>
+      <div class="section-title">🔥 Activité du jour</div>
     </div>
     <div class="steps-card">
-      <div class="steps-row">
-        <input type="number" id="stepsInput" class="steps-input" placeholder="ex: 8000" inputmode="numeric" oninput="previewSteps()">
-        <button class="btn-validate" onclick="saveSteps()">OK</button>
+      <!-- Choix du mode -->
+      <div class="act-mode-row">
+        <button id="actModeSteps" class="act-mode-btn active" onclick="setActivityMode('steps')">👟 Pas</button>
+        <button id="actModeWatch" class="act-mode-btn" onclick="setActivityMode('watch')">⌚ Apple Watch</button>
       </div>
-      <div id="stepsResult" class="steps-result"></div>
-      <div class="steps-hint">Regarde le nombre de pas dans l'app Santé de ton iPhone et reporte-le ici. Les calories s'adaptent à ton poids.</div>
+
+      <!-- Mode PAS -->
+      <div id="actStepsBlock">
+        <div class="steps-row">
+          <input type="number" id="stepsInput" class="steps-input" placeholder="ex: 8000" inputmode="numeric" oninput="previewSteps()">
+          <button class="btn-validate" onclick="saveSteps()">OK</button>
+        </div>
+        <div id="stepsResult" class="steps-result"></div>
+        <div class="steps-hint">Reporte ton nombre de pas (app Santé iPhone). Les calories s'adaptent à ton poids.</div>
+      </div>
+
+      <!-- Mode APPLE WATCH -->
+      <div id="actWatchBlock" style="display:none;">
+        <div class="steps-row">
+          <input type="number" id="watchInput" class="steps-input" placeholder="ex: 318" inputmode="numeric" oninput="previewWatch()">
+          <button class="btn-validate" onclick="saveWatch()">OK</button>
+        </div>
+        <div id="watchResult" class="steps-result"></div>
+        <div class="steps-hint">Entre les kcal de ton anneau <strong>Bouger</strong> (= énergie active). C'est le plus précis les jours où tu portes ta montre.</div>
+      </div>
+
+      <div id="actLockNote" style="display:none;font-size:11px;color:var(--accent2);margin-top:11px;line-height:1.5;"></div>
     </div>
   </div>
 
@@ -1579,6 +1603,7 @@ async function loadState() {
   if (!S.creatine) S.creatine = {};
   if (!S.muscleLog) S.muscleLog = {};
   if (!S.steps) S.steps = {};
+  if (!S.watchCal) S.watchCal = {};
   if (!S.settings) S.settings = { tdee:2300, protTarget:185, goalWeight:85, maxCal:1200 };
 
   // 4. Show setup or launch app
@@ -1693,6 +1718,27 @@ function goTab(tab, el) {
 
 function renderToday() { updateMacros(); renderMealList(); renderSportList(); renderStepsToday(); }
 
+let activityMode = 'steps'; // 'steps' | 'watch'
+
+function setActivityMode(mode) {
+  // Empêche de changer de mode si l'autre a déjà une valeur pour aujourd'hui
+  const hasSteps = S.steps && S.steps[TODAY];
+  const hasWatch = S.watchCal && S.watchCal[TODAY];
+  if (mode === 'watch' && hasSteps) {
+    showToast('Efface d\'abord tes pas du jour');
+    return;
+  }
+  if (mode === 'steps' && hasWatch) {
+    showToast('Efface d\'abord la valeur Apple Watch');
+    return;
+  }
+  activityMode = mode;
+  document.getElementById('actModeSteps').classList.toggle('active', mode === 'steps');
+  document.getElementById('actModeWatch').classList.toggle('active', mode === 'watch');
+  document.getElementById('actStepsBlock').style.display = mode === 'steps' ? 'block' : 'none';
+  document.getElementById('actWatchBlock').style.display = mode === 'watch' ? 'block' : 'none';
+}
+
 function previewSteps() {
   const v = parseInt(document.getElementById('stepsInput').value) || 0;
   const res = document.getElementById('stepsResult');
@@ -1707,8 +1753,9 @@ function previewSteps() {
 function saveSteps() {
   const v = parseInt(document.getElementById('stepsInput').value) || 0;
   if (!S.steps) S.steps = {};
+  if (!S.watchCal) S.watchCal = {};
   if (v <= 0) { delete S.steps[TODAY]; }
-  else { S.steps[TODAY] = v; }
+  else { S.steps[TODAY] = v; if (S.watchCal) delete S.watchCal[TODAY]; }
   save();
   renderStepsToday();
   updateMacros();
@@ -1716,15 +1763,54 @@ function saveSteps() {
   showToast(v > 0 ? `👟 ${v} pas enregistrés` : 'Pas effacés');
 }
 
+function previewWatch() {
+  const v = parseInt(document.getElementById('watchInput').value) || 0;
+  const res = document.getElementById('watchResult');
+  res.textContent = v > 0 ? `🔥 ${v} kcal actives` : '';
+}
+
+function saveWatch() {
+  const v = parseInt(document.getElementById('watchInput').value) || 0;
+  if (!S.watchCal) S.watchCal = {};
+  if (v <= 0) { delete S.watchCal[TODAY]; }
+  else { S.watchCal[TODAY] = v; if (S.steps) delete S.steps[TODAY]; }
+  save();
+  renderStepsToday();
+  updateMacros();
+  renderWeek();
+  showToast(v > 0 ? `⌚ ${v} kcal enregistrées` : 'Valeur effacée');
+}
+
 function renderStepsToday() {
-  const input = document.getElementById('stepsInput');
-  if (!input) return;
-  const v = S.steps && S.steps[TODAY] ? S.steps[TODAY] : '';
-  input.value = v;
+  const stepsInput = document.getElementById('stepsInput');
+  const watchInput = document.getElementById('watchInput');
+  if (!stepsInput || !watchInput) return;
+  const hasWatch = S.watchCal && S.watchCal[TODAY];
+  const hasSteps = S.steps && S.steps[TODAY];
+  // Affiche le bon mode selon ce qui est enregistré
+  if (hasWatch && activityMode !== 'watch') {
+    activityMode = 'watch';
+    document.getElementById('actModeSteps').classList.remove('active');
+    document.getElementById('actModeWatch').classList.add('active');
+    document.getElementById('actStepsBlock').style.display = 'none';
+    document.getElementById('actWatchBlock').style.display = 'block';
+  }
+  stepsInput.value = hasSteps ? S.steps[TODAY] : '';
+  watchInput.value = hasWatch ? S.watchCal[TODAY] : '';
   previewSteps();
+  previewWatch();
+  // Note de verrouillage
+  const note = document.getElementById('actLockNote');
+  if (note) {
+    if (hasWatch) { note.style.display='block'; note.textContent='⌚ Mode Apple Watch actif. Efface la valeur pour repasser aux pas.'; }
+    else if (hasSteps) { note.style.display='block'; note.textContent='👟 Mode Pas actif. Efface les pas pour passer à l\'Apple Watch.'; }
+    else { note.style.display='none'; }
+  }
 }
 
 function getStepsCalories(date) {
+  // Priorité à la valeur Apple Watch si présente (énergie active mesurée)
+  if (S.watchCal && S.watchCal[date]) return Math.round(S.watchCal[date]);
   if (!S.steps || !S.steps[date]) return 0;
   const steps = S.steps[date];
   const weight = S.weights.length ? S.weights[S.weights.length-1].val : (S.profile ? S.profile.startWeight : 80);
@@ -2042,7 +2128,7 @@ function renderDayPanel(d, rows) {
     <button onclick="toggleCreatineForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid ${creatineTaken ? 'var(--accent)' : 'var(--border)'};background:${creatineTaken ? 'var(--accent-dim)' : 'var(--surface2)'};color:${creatineTaken ? 'var(--accent)' : 'var(--muted2)'};font-size:12px;font-weight:600;cursor:pointer;">💊 ${creatineTaken ? 'Créatine ✓' : 'Créatine'}</button>
   </div>`;
 
-  if (!meals.length && !sports.length && !(S.steps && S.steps[d])) {
+  if (!meals.length && !sports.length && !(S.steps && S.steps[d]) && !(S.watchCal && S.watchCal[d])) {
     html += `<div class="day-detail-empty">Aucune donnée — ajoute via les boutons ci-dessus</div>`;
   } else {
     if (meals.length) {
@@ -2076,6 +2162,12 @@ function renderDayPanel(d, rows) {
       html += `<div class="day-sport-row">
         <div class="day-sport-name">👟 ${S.steps[d].toLocaleString('fr-FR')} pas</div>
         <div class="day-sport-cal">~${sc} kcal</div>
+      </div>`;
+    }
+    if (S.watchCal && S.watchCal[d]) {
+      html += `<div class="day-sport-row">
+        <div class="day-sport-name">⌚ Apple Watch</div>
+        <div class="day-sport-cal">${Math.round(S.watchCal[d])} kcal</div>
       </div>`;
     }
   }
@@ -2445,6 +2537,7 @@ const MUSCLE_GROUPS = [
 function renderMuscu() {
   if (!S.muscleLog) S.muscleLog = {};
   if (!S.steps) S.steps = {};
+  if (!S.watchCal) S.watchCal = {};
   const todayMuscles = S.muscleLog[TODAY] || [];
   document.getElementById('muscleGrid').innerHTML = MUSCLE_GROUPS.map(m => {
     const done = todayMuscles.includes(m.id);
@@ -2655,6 +2748,7 @@ function finishSetup() {
 function toggleMuscle(muscleId) {
   if (!S.muscleLog) S.muscleLog = {};
   if (!S.steps) S.steps = {};
+  if (!S.watchCal) S.watchCal = {};
   if (!S.muscleLog[TODAY]) S.muscleLog[TODAY] = [];
   const idx = S.muscleLog[TODAY].indexOf(muscleId);
   if (idx >= 0) S.muscleLog[TODAY].splice(idx, 1);
@@ -2710,6 +2804,7 @@ function renderMusclePastGrid() {
   if (!musclePastDay) return;
   if (!S.muscleLog) S.muscleLog = {};
   if (!S.steps) S.steps = {};
+  if (!S.watchCal) S.watchCal = {};
   const dayMuscles = S.muscleLog[musclePastDay] || [];
   document.getElementById('musclePastMuscleGrid').innerHTML = MUSCLE_GROUPS.map(m => {
     const done = dayMuscles.includes(m.id);
