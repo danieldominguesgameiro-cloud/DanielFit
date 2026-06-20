@@ -990,6 +990,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
       </div>
 
       <div id="actLockNote" style="display:none;font-size:11px;color:var(--accent2);margin-top:11px;line-height:1.5;"></div>
+      <button id="actClearBtn" onclick="clearActivityToday()" style="display:none;width:100%;margin-top:10px;padding:11px;border-radius:13px;border:1.5px solid var(--border2);background:transparent;color:var(--text2);font-family:var(--font-body);font-size:12.5px;font-weight:700;cursor:pointer;">🗑️ Effacer la valeur du jour</button>
     </div>
   </div>
 
@@ -1801,11 +1802,91 @@ function renderStepsToday() {
   previewWatch();
   // Note de verrouillage
   const note = document.getElementById('actLockNote');
+  const clearBtn = document.getElementById('actClearBtn');
   if (note) {
-    if (hasWatch) { note.style.display='block'; note.textContent='⌚ Mode Apple Watch actif. Efface la valeur pour repasser aux pas.'; }
-    else if (hasSteps) { note.style.display='block'; note.textContent='👟 Mode Pas actif. Efface les pas pour passer à l\'Apple Watch.'; }
+    if (hasWatch) { note.style.display='block'; note.textContent='⌚ Mode Apple Watch actif pour aujourd\'hui.'; }
+    else if (hasSteps) { note.style.display='block'; note.textContent='👟 Mode Pas actif pour aujourd\'hui.'; }
     else { note.style.display='none'; }
   }
+  if (clearBtn) clearBtn.style.display = (hasWatch || hasSteps) ? 'block' : 'none';
+}
+
+function clearActivityToday() {
+  if (S.steps) delete S.steps[TODAY];
+  if (S.watchCal) delete S.watchCal[TODAY];
+  save();
+  renderStepsToday();
+  updateMacros();
+  renderWeek();
+  showToast('Valeur effacée ✓');
+}
+
+// ===== Édition activité d'un jour passé =====
+let adDay = null;
+let adMode = 'steps';
+function openActivityModalForDay(d) {
+  adDay = d;
+  const [_y,_m,_dy]=d.split('-').map(Number); const date=new Date(_y,_m-1,_dy);
+  const dayNames=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const months=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
+  document.getElementById('activityDayTitle').textContent = dayNames[date.getDay()]+' '+date.getDate()+' '+months[date.getMonth()];
+  const hasWatch = S.watchCal && S.watchCal[d];
+  adMode = hasWatch ? 'watch' : 'steps';
+  document.getElementById('adModeSteps').classList.toggle('active', adMode==='steps');
+  document.getElementById('adModeWatch').classList.toggle('active', adMode==='watch');
+  document.getElementById('adStepsBlock').style.display = adMode==='steps' ? 'block':'none';
+  document.getElementById('adWatchBlock').style.display = adMode==='watch' ? 'block':'none';
+  document.getElementById('adStepsInput').value = (S.steps && S.steps[d]) ? S.steps[d] : '';
+  document.getElementById('adWatchInput').value = (S.watchCal && S.watchCal[d]) ? S.watchCal[d] : '';
+  adPreview();
+  openModal('activityDayModal');
+}
+function adSetMode(mode) {
+  adMode = mode;
+  document.getElementById('adModeSteps').classList.toggle('active', mode==='steps');
+  document.getElementById('adModeWatch').classList.toggle('active', mode==='watch');
+  document.getElementById('adStepsBlock').style.display = mode==='steps' ? 'block':'none';
+  document.getElementById('adWatchBlock').style.display = mode==='watch' ? 'block':'none';
+  adPreview();
+}
+function adPreview() {
+  const res = document.getElementById('adStepsRes');
+  if (adMode==='steps') {
+    const v = parseInt(document.getElementById('adStepsInput').value)||0;
+    if (v<=0) { res.textContent=''; return; }
+    const weight = S.weights.length ? S.weights[S.weights.length-1].val : (S.profile?S.profile.startWeight:80);
+    const km=(v*0.78)/1000;
+    const cal=Math.round(0.314*weight*v/1000);
+    res.textContent = `≈ ${cal} kcal · ${km.toFixed(1)} km`;
+  }
+}
+function saveActivityForDay() {
+  if (!adDay) return;
+  if (!S.steps) S.steps={}; if (!S.watchCal) S.watchCal={};
+  if (adMode==='steps') {
+    const v = parseInt(document.getElementById('adStepsInput').value)||0;
+    if (v>0) { S.steps[adDay]=v; delete S.watchCal[adDay]; }
+    else delete S.steps[adDay];
+  } else {
+    const v = parseInt(document.getElementById('adWatchInput').value)||0;
+    if (v>0) { S.watchCal[adDay]=v; delete S.steps[adDay]; }
+    else delete S.watchCal[adDay];
+  }
+  save();
+  closeModal('activityDayModal');
+  renderWeek();
+  if (adDay===TODAY) { renderStepsToday(); updateMacros(); }
+  showToast('Activité enregistrée ✓');
+}
+function deleteActivityForDay() {
+  if (!adDay) return;
+  if (S.steps) delete S.steps[adDay];
+  if (S.watchCal) delete S.watchCal[adDay];
+  save();
+  closeModal('activityDayModal');
+  renderWeek();
+  if (adDay===TODAY) { renderStepsToday(); updateMacros(); }
+  showToast('Activité effacée ✓');
 }
 
 function getStepsCalories(date) {
@@ -2126,6 +2207,7 @@ function renderDayPanel(d, rows) {
     <button onclick="openFoodModalForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;">🍽 + Repas</button>
     <button onclick="openSportModalForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;">💪 + Sport</button>
     <button onclick="toggleCreatineForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid ${creatineTaken ? 'var(--accent)' : 'var(--border)'};background:${creatineTaken ? 'var(--accent-dim)' : 'var(--surface2)'};color:${creatineTaken ? 'var(--accent)' : 'var(--muted2)'};font-size:12px;font-weight:600;cursor:pointer;">💊 ${creatineTaken ? 'Créatine ✓' : 'Créatine'}</button>
+    <button onclick="openActivityModalForDay('${d}')" style="flex:1;padding:9px 10px;border-radius:12px;border:1px solid var(--border);background:var(--surface2);color:var(--text);font-size:12px;font-weight:600;cursor:pointer;">👟 Activité</button>
   </div>`;
 
   if (!meals.length && !sports.length && !(S.steps && S.steps[d]) && !(S.watchCal && S.watchCal[d])) {
@@ -3179,21 +3261,24 @@ async function fetchProductByBarcode(barcode) {
   }
 }
 
-// Saisie d'un produit scanné (ponctuel) : quantité ajustable, calcul auto, non enregistré
-let scannedFood = null;
+// Produit scanné (ponctuel) : on ouvre l'étape quantité (en grammes) avec calcul auto, sans l'enregistrer
 function openScannedFoodEntry(name, cal100, prot100, carb100, fat100) {
-  scannedFood = { name, cal100, prot100, carb100, fat100 };
+  // selectedFood temporaire (pas ajouté à S.foods) → réutilise le flux quantité normal
+  selectedFood = { name, cal100, prot100, carb100, fat100, fixedUnit: null, _scanned: true };
+  editMealIdx = null;
+  // activeDayEdit reste tel quel (jour en cours d'édition ou aujourd'hui)
   setTimeout(() => {
-    document.getElementById('epName').value = name;
-    // On pré-remplit pour 100 g ; l'utilisateur peut ajuster directement les valeurs
-    document.getElementById('epCal').value = cal100;
-    document.getElementById('epProt').value = prot100;
-    document.getElementById('epCarb').value = carb100;
-    document.getElementById('epFat').value = fat100;
-    const hint = document.getElementById('epScanHint');
-    if (hint) hint.style.display = 'block';
-    document.querySelector('#ephemeralModal .btn-confirm').textContent = 'Ajouter au repas';
-    openModal('ephemeralModal');
+    openModal('foodModal');
+    document.getElementById('fStep1').style.display = 'none';
+    document.getElementById('fStep2').classList.add('visible');
+    document.getElementById('qtyFoodName').textContent = name;
+    document.getElementById('qtyFoodSub').textContent = '📷 Produit scanné · indique la quantité';
+    document.getElementById('unitMode').style.display = 'none';
+    document.getElementById('gramMode').style.display = 'block';
+    unitCountVal = 0;
+    document.getElementById('qtyInput').value = 100;
+    updateQtyPreview();
+    setTimeout(() => { const qi=document.getElementById('qtyInput'); if(qi){qi.focus(); qi.select();} }, 150);
     barcodeForMeal = false;
   }, 250);
 }
@@ -3741,6 +3826,34 @@ loadState();
         <button class="btn-confirm" style="flex:1;" onclick="saveWeightForDay()">Enregistrer</button>
         <button id="weightPastDeleteBtn" onclick="deleteWeightForDay()" style="padding:15px 18px;border-radius:14px;border:1px solid var(--border);background:var(--surface2);color:var(--accent2);font-size:13px;font-weight:600;cursor:pointer;">Supprimer</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: Modifier activité (pas / Apple Watch) d'un jour -->
+<div class="overlay" id="activityDayModal" onclick="closeModalOutside(event,'activityDayModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">🔥 Activité du jour</div>
+      <button class="modal-close" onclick="closeModal('activityDayModal')">✕</button>
+    </div>
+    <div id="activityDayTitle" style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:16px;"></div>
+    <div class="act-mode-row">
+      <button id="adModeSteps" class="act-mode-btn active" onclick="adSetMode('steps')">👟 Pas</button>
+      <button id="adModeWatch" class="act-mode-btn" onclick="adSetMode('watch')">⌚ Apple Watch</button>
+    </div>
+    <div id="adStepsBlock">
+      <div class="input-label">Nombre de pas</div>
+      <input class="qty-number-input" type="number" inputmode="numeric" id="adStepsInput" placeholder="ex: 8000" oninput="adPreview()">
+      <div id="adStepsRes" style="text-align:center;font-family:var(--font-display);font-weight:800;font-size:17px;color:var(--mint);margin-top:12px;"></div>
+    </div>
+    <div id="adWatchBlock" style="display:none;">
+      <div class="input-label">Kcal actives (anneau Bouger)</div>
+      <input class="qty-number-input" type="number" inputmode="numeric" id="adWatchInput" placeholder="ex: 318" oninput="adPreview()">
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;">
+      <button class="btn-confirm" style="flex:1;margin-top:0;" onclick="saveActivityForDay()">Enregistrer</button>
+      <button onclick="deleteActivityForDay()" style="padding:16px 18px;border-radius:16px;border:1px solid var(--border);background:var(--surface2);color:var(--accent2);font-size:13px;font-weight:700;cursor:pointer;">Effacer</button>
     </div>
   </div>
 </div>
