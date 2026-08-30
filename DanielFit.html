@@ -1995,6 +1995,26 @@ function editMeal(i) {
   const m = S.meals[TODAY][i];
   const food = S.foods.find(f => f.name === m.name);
 
+  if (!food && m._scanned && m.cal100 !== undefined) {
+    // Produit scanné (code-barres) — on rouvre l'étape quantité en grammes, comme à l'ajout
+    activeDayEdit = null; // editMeal édite le jour courant (aujourd'hui)
+    editMealIdx = i;
+    selectedFood = { name: m.name, cal100: m.cal100, prot100: m.prot100, carb100: m.carb100, fat100: m.fat100, fixedUnit: null, _scanned: true };
+    document.getElementById('foodModalTitle').textContent = 'Modifier la quantité';
+    document.getElementById('fStep1').style.display = 'none';
+    document.getElementById('fStep2').classList.add('visible');
+    document.getElementById('qtyFoodName').textContent = m.name;
+    document.getElementById('qtyFoodSub').textContent = '📷 Produit scanné · indique la quantité';
+    document.getElementById('unitMode').style.display = 'none';
+    document.getElementById('gramMode').style.display = 'block';
+    unitCountVal = 0;
+    document.getElementById('qtyInput').value = m.qty;
+    updateQtyPreview();
+    document.querySelector('#fStep2 .btn-confirm').textContent = 'Modifier ✓';
+    openModal('foodModal');
+    return;
+  }
+
   if (!food) {
     // Entrée éphémère (saisie rapide, recherche OFF) — éditer via ephemeralModal
     activeDayEdit = null; // editMeal édite le jour courant (aujourd'hui)
@@ -3215,8 +3235,10 @@ async function fetchProductByBarcode(barcode) {
         const prot100 = Math.round((n['proteins_100g'] || 0) * 10) / 10;
         const carb100 = Math.round((n['carbohydrates_100g'] || 0) * 10) / 10;
         const fat100 = Math.round((n['fat_100g'] || 0) * 10) / 10;
-        // Ouvre la saisie rapide pré-remplie pour 100 g, l'utilisateur ajuste la quantité
-        openScannedFoodEntry(name, cal100, prot100, carb100, fat100);
+        // Poids du paquet (product_quantity) ou, à défaut, taille d'une portion (serving_quantity)
+        const suggestedQty = parseFloat(p.product_quantity) || parseFloat(p.serving_quantity) || null;
+        // Ouvre la saisie rapide pré-remplie (quantité du paquet si connue, sinon 100 g), l'utilisateur ajuste si besoin
+        openScannedFoodEntry(name, cal100, prot100, carb100, fat100, suggestedQty);
       } else {
         barcodeForMeal = false;
         showToast('⚠️ Produit introuvable');
@@ -3262,7 +3284,7 @@ async function fetchProductByBarcode(barcode) {
 }
 
 // Produit scanné (ponctuel) : on ouvre l'étape quantité (en grammes) avec calcul auto, sans l'enregistrer
-function openScannedFoodEntry(name, cal100, prot100, carb100, fat100) {
+function openScannedFoodEntry(name, cal100, prot100, carb100, fat100, suggestedQty) {
   // selectedFood temporaire (pas ajouté à S.foods) → réutilise le flux quantité normal
   selectedFood = { name, cal100, prot100, carb100, fat100, fixedUnit: null, _scanned: true };
   editMealIdx = null;
@@ -3272,11 +3294,13 @@ function openScannedFoodEntry(name, cal100, prot100, carb100, fat100) {
     document.getElementById('fStep1').style.display = 'none';
     document.getElementById('fStep2').classList.add('visible');
     document.getElementById('qtyFoodName').textContent = name;
-    document.getElementById('qtyFoodSub').textContent = '📷 Produit scanné · indique la quantité';
+    document.getElementById('qtyFoodSub').textContent = suggestedQty
+      ? `📷 Produit scanné · quantité du paquet pré-remplie (${suggestedQty}g), modifie si besoin`
+      : '📷 Produit scanné · indique la quantité';
     document.getElementById('unitMode').style.display = 'none';
     document.getElementById('gramMode').style.display = 'block';
     unitCountVal = 0;
-    document.getElementById('qtyInput').value = 100;
+    document.getElementById('qtyInput').value = suggestedQty || 100;
     updateQtyPreview();
     setTimeout(() => { const qi=document.getElementById('qtyInput'); if(qi){qi.focus(); qi.select();} }, 150);
     barcodeForMeal = false;
@@ -3473,6 +3497,13 @@ function confirmAddFood() {
     carb: selectedFood.carb100 * m,
     fat: selectedFood.fat100 * m,
   };
+  if (selectedFood._scanned) {
+    entry._scanned = true;
+    entry.cal100 = selectedFood.cal100;
+    entry.prot100 = selectedFood.prot100;
+    entry.carb100 = selectedFood.carb100;
+    entry.fat100 = selectedFood.fat100;
+  }
   const targetDay = activeDayEdit || TODAY;
   if (!S.meals[targetDay]) S.meals[targetDay] = [];
   if (editMealIdx !== null) {
