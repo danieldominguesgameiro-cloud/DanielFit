@@ -1523,10 +1523,11 @@ let S = {
 let saveTimeout = null;
 let DOC_ID = 'daniel'; // overridden by profile.docId after setup
 let firebaseOk = false;
+const STORAGE_NS = 'danielfit'; // stockage local propre à cette app (ne pas partager avec un autre clone)
 
 function save() {
   try {
-    const key = S.profile ? 'danielfit_v3_' + DOC_ID : 'danielfit_v3';
+    const key = S.profile ? STORAGE_NS + '_v3_' + DOC_ID : STORAGE_NS + '_v3';
     localStorage.setItem(key, JSON.stringify(S));
   } catch(e) {}
   if (!firebaseOk) return;
@@ -1572,14 +1573,14 @@ async function loadState() {
   // 1. Load from localStorage first — always works offline
   try {
     // Check if there's a saved user key
-    const userKey = localStorage.getItem('danielfit_user');
+    const userKey = localStorage.getItem(STORAGE_NS + '_user');
     if (userKey) {
-      const raw = localStorage.getItem('danielfit_v3_' + userKey);
+      const raw = localStorage.getItem(STORAGE_NS + '_v3_' + userKey);
       if (raw) S = Object.assign({}, S, JSON.parse(raw));
       DOC_ID = userKey;
     } else {
       // Legacy: try old key for Daniel
-      const raw = localStorage.getItem('danielfit_v3');
+      const raw = localStorage.getItem(STORAGE_NS + '_v3');
       if (raw) {
         S = Object.assign({}, S, JSON.parse(raw));
         // If it has data but no profile, create Daniel's profile automatically
@@ -1589,7 +1590,7 @@ async function loadState() {
             startDate: '2026-03-05', startWeight: 100.3,
             goalWeight: 85, sex: 'M', age: 23, height: 178, activity: 1.375
           };
-          localStorage.setItem('danielfit_user', 'daniel');
+          localStorage.setItem(STORAGE_NS + '_user', 'daniel');
         }
         DOC_ID = 'daniel';
       }
@@ -2840,7 +2841,7 @@ function finishSetup() {
   S.settings = { tdee: c.tdee, maxCal: c.maxCal, protTarget: c.protTarget, goalWeight: goal };
   S.weights = [{ date: TODAY, val: weight }];
 
-  localStorage.setItem('danielfit_user', docId);
+  localStorage.setItem(STORAGE_NS + '_user', docId);
   save();
   computeConstants();
   connectFirebase().then(save); // connexion cloud immédiate pour un profil tout neuf
@@ -3788,12 +3789,12 @@ function toggleTheme() {
   const isLight = document.body.classList.toggle('light-theme');
   document.getElementById('themeToggle').classList.toggle('on', isLight);
   document.getElementById('themeColor').content = isLight ? '#1a1424' : '#ff7a3d';
-  try { localStorage.setItem('danielfit_theme', isLight ? 'light' : 'dark'); } catch(e) {}
+  try { localStorage.setItem(STORAGE_NS + '_theme', isLight ? 'light' : 'dark'); } catch(e) {}
 }
 
 function loadTheme() {
   try {
-    const t = localStorage.getItem('danielfit_theme');
+    const t = localStorage.getItem(STORAGE_NS + '_theme');
     if (t === 'light') {
       document.body.classList.add('light-theme');
       document.getElementById('themeColor').content = '#1a1424';
@@ -3809,7 +3810,7 @@ function exportData() {
   const blob = new Blob([JSON.stringify(S, null, 2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'danielfit_backup_' + TODAY + '.json';
+  a.download = STORAGE_NS + '_backup_' + TODAY + '.json';
   a.click();
   showToast('Export réussi ✓');
 }
