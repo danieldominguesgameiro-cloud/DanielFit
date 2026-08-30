@@ -1521,14 +1521,14 @@ let S = {
 };
 
 let saveTimeout = null;
-let DOC_ID = 'daniel'; // overridden by profile.docId after setup
+let DOC_ID = 'daniel'; // IDENTIFIANT CLOUD FIXE de cette app. Ne jamais le rendre aleatoire.
 let firebaseOk = false;
 const STORAGE_NS = 'danielfit'; // stockage local propre à cette app (ne pas partager avec un autre clone)
 
 function save() {
+  S.updatedAt = Date.now();
   try {
-    const key = S.profile ? STORAGE_NS + '_v3_' + DOC_ID : STORAGE_NS + '_v3';
-    localStorage.setItem(key, JSON.stringify(S));
+    localStorage.setItem(STORAGE_NS + '_v3_' + DOC_ID, JSON.stringify(S));
   } catch(e) {}
   if (!firebaseOk) return;
   clearTimeout(saveTimeout);
@@ -1563,42 +1563,49 @@ async function connectFirebase() {
         new Promise((_, r) => setTimeout(() => r(), 5000))
       ]);
       firebaseOk = true;
-      if (doc && doc.exists) S = Object.assign({}, S, doc.data());
-      else if (doc) firebase.firestore().collection('users').doc(DOC_ID).set(JSON.parse(JSON.stringify(S))).catch(()=>{});
+      const cloud = (doc && doc.exists) ? doc.data() : null;
+      if (cloud) {
+        const localTs = S.updatedAt || 0, cloudTs = cloud.updatedAt || 0;
+        // Le cloud gagne, sauf si le local est strictement plus recent (modifs faites hors ligne)
+        if (!S.profile || cloudTs >= localTs) S = Object.assign({}, S, cloud);
+      } else if (doc && S.profile) {
+        // On ne cree le document distant que si on a deja un profil local, jamais un doc vide
+        firebase.firestore().collection('users').doc(DOC_ID).set(JSON.parse(JSON.stringify(S))).catch(()=>{});
+      }
     }
   } catch(e) { firebaseOk = false; }
 }
 
 async function loadState() {
-  // 1. Load from localStorage first — always works offline
+  // 1. Lecture locale (fonctionne hors ligne)
   try {
-    // Check if there's a saved user key
-    const userKey = localStorage.getItem(STORAGE_NS + '_user');
-    if (userKey) {
-      const raw = localStorage.getItem(STORAGE_NS + '_v3_' + userKey);
-      if (raw) S = Object.assign({}, S, JSON.parse(raw));
-      DOC_ID = userKey;
-    } else {
-      // Legacy: try old key for Daniel
-      const raw = localStorage.getItem(STORAGE_NS + '_v3');
-      if (raw) {
-        S = Object.assign({}, S, JSON.parse(raw));
-        // If it has data but no profile, create Daniel's profile automatically
-        if (!S.profile) {
-          S.profile = {
-            firstName: 'Daniel', docId: 'daniel',
-            startDate: '2026-03-05', startWeight: 100.3,
-            goalWeight: 85, sex: 'M', age: 23, height: 178, activity: 1.375
-          };
-          localStorage.setItem(STORAGE_NS + '_user', 'daniel');
+    let raw = localStorage.getItem(STORAGE_NS + '_v3_' + DOC_ID)
+           || localStorage.getItem(STORAGE_NS + '_v3');
+    if (!raw) {
+      // Rattrapage : recupere un ancien profil enregistre sous un identifiant aleatoire
+      let best = null;
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf(STORAGE_NS + '_v3_') === 0) {
+          try {
+            const cand = JSON.parse(localStorage.getItem(k));
+            if (cand && cand.profile && (!best || (cand.updatedAt || 0) > (best.updatedAt || 0))) best = cand;
+          } catch(e) {}
         }
-        DOC_ID = 'daniel';
       }
+      if (best) S = Object.assign({}, S, best);
+    } else {
+      S = Object.assign({}, S, JSON.parse(raw));
     }
   } catch(e) {}
 
-  // 2. Try Firebase
-  if (S.profile) await connectFirebase();
+  // 2. Le cloud est TOUJOURS interroge, meme sans profil local.
+  //    C'est ce qui permet de retrouver ses donnees sur un appareil ou un raccourci tout neuf.
+  await connectFirebase();
+  if (S.profile) {
+    if (S.profile.docId !== DOC_ID) S.profile.docId = DOC_ID;
+    try { localStorage.setItem(STORAGE_NS + '_v3_' + DOC_ID, JSON.stringify(S)); } catch(e) {}
+  }
 
   // 3. Sanitize
   if (!S.foods || !S.foods.length) S.foods = [...DEFAULT_FOODS];
@@ -1677,8 +1684,9 @@ function loadSettings() {
   document.getElementById('targCal').textContent = maxCal;
   document.getElementById('targProt').textContent = S.settings.protTarget;
   onDeficitChange();
-  if (S.profile && S.profile.claudeApiKey) {
-    document.getElementById('sApiKey') && (document.getElementById('sApiKey').value = S.profile.claudeApiKey);
+  const _apiKey = (S.settings && S.settings.claudeApiKey) || (S.profile && S.profile.claudeApiKey);
+  if (_apiKey) {
+    document.getElementById('sApiKey') && (document.getElementById('sApiKey').value = _apiKey);
   }
 }
 
@@ -2828,9 +2836,8 @@ function finishSetup() {
   const c = window._setupComputed;
   if (!name || !c) return;
 
-  // Create docId from name (lowercase, no spaces)
-  const docId = name.toLowerCase().replace(/[^a-z0-9]/g, '') + '_' + Date.now().toString(36);
-  DOC_ID = docId;
+  // DOC_ID est fixe pour cette app, il ne depend ni du nom ni de l'appareil
+  const docId = DOC_ID;
 
   S.profile = {
     firstName: name, docId,
