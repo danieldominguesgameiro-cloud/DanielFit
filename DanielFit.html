@@ -1087,7 +1087,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     </div>
 
     <div style="text-align:center;font-size:10px;color:var(--muted2);padding:6px 0 4px;letter-spacing:0.5px;">
-      version <strong id="appVersion">v15 · thème neutre · 02-09-2026</strong>
+      version <strong id="appVersion">v16 · thème neutre · 22-09-2026</strong>
     </div>
   </div>
 
@@ -2464,8 +2464,12 @@ function getTheoreticalWeight(weekNum) {
 
 // Rythme reellement observe, mesure sur les 4 dernieres semaines de pesees
 function actualRatePerWeek() {
-  const w = S.weights;
-  if (!w || w.length < 2) return null;
+  // Seules les pesees du plan en cours comptent. Sans ce filtre, la fenetre
+  // de 4 semaines remontait avant la date de depart et comparait le poids
+  // actuel a celui d'un ancien cycle, ce qui faussait tout le diagnostic.
+  const startD = new Date(START_DATE + 'T12:00:00');
+  const w = (S.weights || []).filter(e => new Date(e.date + 'T12:00:00') >= startD);
+  if (w.length < 2) return null;
   const last = w[w.length-1];
   const lastD = new Date(last.date + 'T12:00:00');
   const winStart = new Date(lastD); winStart.setDate(winStart.getDate() - 28);
