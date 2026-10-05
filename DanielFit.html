@@ -898,7 +898,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
       <div class="weight-sub">Dernier poids enregistré</div>
       <div class="weight-stats-row">
         <div class="weight-stat">
-          <div class="weight-stat-val green" id="wStatGoal">85 KG</div>
+          <div class="weight-stat-val green" id="wStatGoal">—</div>
           <div class="weight-stat-label">objectif</div>
         </div>
         <div class="weight-arrow">→</div>
@@ -926,7 +926,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
 
     <div class="projection-card">
       <div class="projection-title">📈 Projections</div>
-      <div class="projection-text" id="projDeficitText">En maintenant ton déficit de <strong style="color:var(--accent2)">−1100 kcal/jour</strong></div>
+      <div class="act-mode-row" style="margin-bottom:10px;">
+        <button id="projModeTheo" class="act-mode-btn active" onclick="setProjMode('theorique')">📐 Théorique</button>
+        <button id="projModeReel" class="act-mode-btn" onclick="setProjMode('reel')">📊 Rythme réel</button>
+      </div>
+      <div class="projection-text" id="projDeficitText"></div>
       <div id="projMilestones" style="margin-top:12px;display:flex;flex-direction:column;gap:8px;"></div>
     </div>
 
@@ -1087,7 +1091,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     </div>
 
     <div style="text-align:center;font-size:10px;color:var(--muted2);padding:6px 0 4px;letter-spacing:0.5px;">
-      version <strong id="appVersion">v16 · thème neutre · 22-09-2026</strong>
+      version <strong id="appVersion">v19 · thème neutre · 05-10-2026</strong>
     </div>
   </div>
 
@@ -1359,13 +1363,94 @@ function computeConstants() {
   GOAL_WEIGHT_DEFAULT = p.goalWeight;
   // Déficit cible = TDEE - budget calorique (suit le slider des réglages)
   TARGET_DEFICIT = Math.max(0, (S.settings.tdee || 2300) - (S.settings.maxCal || 1200));
-  // Total days = (startWeight - goalWeight) / (deficit / 7700)
-  const kgToLose = START_WEIGHT - GOAL_WEIGHT_DEFAULT;
-  const dailyDeficit = TARGET_DEFICIT || 1;
-  const kgPerDay = dailyDeficit / 7700;
-  const totalDays = Math.ceil(kgToLose / kgPerDay);
-  WEEKS_TOTAL = Math.max(1, Math.ceil(totalDays / 7));
-  KG_PER_WEEK = kgToLose / WEEKS_TOTAL;
+  // Rythme de reference : consequence directe du deficit, 7700 kcal par kg.
+  // C'est la SEULE source de verite. Avant, il etait recalcule a partir d'un
+  // nombre de semaines arrondi, ce qui donnait 624 g au lieu de 636 g et
+  // desynchronisait le planning, les projections et le compteur de jours.
+  const kgToLose = Math.max(0, START_WEIGHT - GOAL_WEIGHT_DEFAULT);
+  KG_PER_WEEK = (TARGET_DEFICIT || 1) * 7 / 7700;
+  WEEKS_TOTAL = Math.max(1, Math.ceil(kgToLose / KG_PER_WEEK));
+}
+
+// ---------------------------------------------------------------------------
+// TENDANCE MESUREE : regression lineaire (moindres carres) sur les pesees.
+//
+// Pourquoi une regression plutot qu'un simple "premier moins dernier" :
+//  - un calcul a deux points ignore tout ce qu'il y a entre les deux et fait
+//    reposer la projection entiere sur deux mesures, donc sur deux mauvais
+//    jours possibles. La regression utilise chaque pesee et le bruit se
+//    compense au lieu de s'amplifier.
+//  - elle donne aussi un poids LISSE pour aujourd'hui, ce qui evite de partir
+//    d'une pesee ponctuellement haute ou basse.
+//  - elle fournit une incertitude, donc une fourchette de dates honnete.
+//
+// La premiere semaine du plan est exclue : sa chute vient du glycogene et de
+// l'eau qu'il retient, pas de la graisse. Fenetre glissante de 8 semaines pour
+// rester reactif si le deficit change.
+// ---------------------------------------------------------------------------
+function measuredTrend() {
+  const startD = new Date(START_DATE + 'T12:00:00');
+  const anchor = new Date(startD); anchor.setDate(anchor.getDate() + 7);
+  const cutoff = new Date(TODAY + 'T12:00:00'); cutoff.setDate(cutoff.getDate() - 56);
+  const from = anchor > cutoff ? anchor : cutoff;
+
+  const pts = (S.weights || [])
+    .filter(e => new Date(e.date + 'T12:00:00') >= from)
+    .map(e => ({ t: (new Date(e.date + 'T12:00:00') - from) / 86400000, w: e.val }));
+  if (pts.length < 3) return null;
+  const span = pts[pts.length - 1].t - pts[0].t;
+  if (span < 12) return null;
+
+  const n = pts.length;
+  const mt = pts.reduce((a, p) => a + p.t, 0) / n;
+  const mw = pts.reduce((a, p) => a + p.w, 0) / n;
+  let num = 0, den = 0;
+  for (const p of pts) { num += (p.t - mt) * (p.w - mw); den += (p.t - mt) * (p.t - mt); }
+  if (den === 0) return null;
+  const slope = num / den;                 // kg par jour, negatif en perte
+  const intercept = mw - slope * mt;
+
+  // Erreur standard de la pente : combien la vitesse estimee peut varier
+  let sse = 0;
+  for (const p of pts) { const r = p.w - (intercept + slope * p.t); sse += r * r; }
+  const se = n > 2 ? Math.sqrt((sse / (n - 2)) / den) : 0;
+
+  const tToday = (new Date(TODAY + 'T12:00:00') - from) / 86400000;
+  return {
+    ratePerWeek: -slope * 7,
+    sePerWeek: se * 7,
+    smoothed: intercept + slope * tToday,
+    n: n,
+    spanDays: Math.round(span)
+  };
+}
+
+function useRealMode() { return S.settings && S.settings.projMode === 'reel'; }
+
+// Tendance exploitable uniquement si elle existe ET descend vraiment
+function usableTrend() {
+  const t = measuredTrend();
+  return (t && t.ratePerWeek > 0.02) ? t : null;
+}
+
+function activeRatePerWeek() {
+  if (!useRealMode()) return KG_PER_WEEK;
+  const t = usableTrend();
+  return t ? t.ratePerWeek : KG_PER_WEEK;
+}
+
+// Nombre de jours pour atteindre un poids donne, depuis le poids ACTUEL.
+// Toutes les echeances affichees passent par ici.
+function daysToWeight(target, rateOverride) {
+  const t = useRealMode() ? usableTrend() : null;
+  // En mode reel on part du poids LISSE, pas de la derniere pesee brute
+  const from = t ? t.smoothed
+                 : ((S.weights && S.weights.length) ? S.weights[S.weights.length-1].val : START_WEIGHT);
+  const kg = from - target;
+  if (kg <= 0) return 0;
+  const rate = rateOverride || activeRatePerWeek();
+  if (rate <= 0.02) return 0;
+  return Math.ceil(kg / rate * 7);
 }
 let TARGET_DEFICIT = 1100;
 
@@ -1705,12 +1790,7 @@ function saveApiKey() {
 // Jours restants recalcules en permanence a partir du poids actuel,
 // du poids objectif et du deficit quotidien choisi dans les reglages.
 function projectionDays() {
-  const latest = S.weights.length ? S.weights[S.weights.length-1].val : START_WEIGHT;
-  const goal = (S.settings && S.settings.goalWeight) || GOAL_WEIGHT_DEFAULT;
-  const kgLeft = latest - goal;
-  if (kgLeft <= 0) return 0;
-  const deficit = Math.max(1, (S.settings.tdee || 2300) - (S.settings.maxCal || 1200));
-  return Math.ceil((kgLeft * 7700) / deficit);
+  return daysToWeight((S.settings && S.settings.goalWeight) || GOAL_WEIGHT_DEFAULT);
 }
 
 function projectionDate(days) {
@@ -2428,6 +2508,8 @@ function renderPoids() {
   const latest = w.length ? w[w.length-1].val : START_WEIGHT;
   const goal = S.settings.goalWeight;
   document.getElementById('weightBig').innerHTML = latest + '<span>kg</span>';
+  const gEl = document.getElementById('wStatGoal');
+  if (gEl) gEl.textContent = goal + ' KG';
   document.getElementById('wStatLeft').textContent = (latest - goal).toFixed(1);
   const el = document.getElementById('weightHistory');
   if (!w.length) { el.innerHTML = '<div class="empty-state"><p>Aucun poids enregistré</p></div>'; return; }
@@ -2630,12 +2712,34 @@ function renderControl() {
     </div>`;
 }
 
+function setProjMode(mode) {
+  if (!S.settings) return;
+  S.settings.projMode = mode;
+  save();
+  renderProjections(); updateHeader(); renderPoids(); renderControl();
+}
+
 function renderProjections() {
   const el = document.getElementById('projMilestones');
   if (!el) return;
-  // Update the deficit text to follow the slider
+  const mode = useRealMode() ? 'reel' : 'theorique';
+  const trend = measuredTrend();
+  const bTheo = document.getElementById('projModeTheo'), bReel = document.getElementById('projModeReel');
+  if (bTheo) bTheo.classList.toggle('active', mode === 'theorique');
+  if (bReel) bReel.classList.toggle('active', mode === 'reel');
+
   const ptxt = document.getElementById('projDeficitText');
-  if (ptxt) ptxt.innerHTML = `En maintenant ton déficit de <strong style="color:var(--accent2)">−${TARGET_DEFICIT} kcal/jour</strong>`;
+  if (ptxt) {
+    if (mode === 'theorique') {
+      ptxt.innerHTML = `En maintenant ton déficit de <strong style="color:var(--accent2)">−${TARGET_DEFICIT} kcal/jour</strong>, soit <strong>${Math.round(KG_PER_WEEK*1000)} g/semaine</strong> en théorie.`;
+    } else if (trend === null) {
+      ptxt.innerHTML = `<strong style="color:var(--blue)">Pas encore assez de recul.</strong> Il faut 3 pesées sur au moins 12 jours, première semaine du plan exclue. Calcul théorique utilisé en attendant.`;
+    } else if (trend.ratePerWeek <= 0.02) {
+      ptxt.innerHTML = `<strong style="color:var(--red)">Ta tendance ne descend pas</strong> sur la période mesurée, aucune échéance ne peut en être déduite. Calcul théorique utilisé en attendant.`;
+    } else {
+      ptxt.innerHTML = `Tendance mesurée : <strong style="color:var(--accent)">${Math.round(trend.ratePerWeek*1000)} g/semaine</strong> ±${Math.round(trend.sePerWeek*1000)}, sur ${trend.n} pesées et ${trend.spanDays} jours. Départ du poids lissé <strong>${trend.smoothed.toFixed(1)} kg</strong>.`;
+    }
+  }
   const latest = S.weights.length ? S.weights[S.weights.length-1].val : START_WEIGHT;
   const today = new Date();
   const months = ['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
@@ -2648,17 +2752,31 @@ function renderProjections() {
   const emojis = {}, labels = {};
   targets.forEach((t, i) => {
     emojis[t] = t === goalW ? '🏆' : stepEmojis[i % stepEmojis.length];
-    labels[t] = t === goalW ? `Objectif final — ${goalW} kg !` : `Sous les ${t} kg`;
+    labels[t] = t === goalW ? `Objectif final, ${goalW} kg !` : `Sous les ${t} kg`;
   });
-  const perWeek = KG_PER_WEEK > 0 ? KG_PER_WEEK : 1.0;
   const milestones = targets.filter(t => t < latest).map(target => {
-    const kgToLose = latest - target;
-    const weeksNeeded = Math.max(1, Math.round(kgToLose / perWeek));
+    // Meme calcul que le compteur de jours restants de l'en-tete
+    const days = daysToWeight(target);
+    const weeksNeeded = Math.max(1, Math.round(days / 7));
     const date = new Date(today);
-    date.setDate(today.getDate() + weeksNeeded * 7);
+    date.setDate(today.getDate() + days);
     return {target, weeksNeeded, date, isGoal: target === goalW};
   });
   if (!milestones.length) { el.innerHTML = '<div style="color:var(--muted2);font-size:13px;">Tu as atteint tous les paliers 🏆</div>'; return; }
+  let footer;
+  if (mode === 'reel' && trend && trend.ratePerWeek > 0.02) {
+    // Fourchette a 95% : la pente mesuree plus ou moins deux erreurs standard
+    const fast = trend.ratePerWeek + 1.96 * trend.sePerWeek;
+    const slow = Math.max(0.05, trend.ratePerWeek - 1.96 * trend.sePerWeek);
+    const dFast = new Date(today); dFast.setDate(today.getDate() + daysToWeight(goalW, fast));
+    const dSlow = new Date(today); dSlow.setDate(today.getDate() + daysToWeight(goalW, slow));
+    const f = d => d.getDate() + ' ' + months[d.getMonth()];
+    footer = `<div style="font-size:10.5px;color:var(--muted2);margin-top:10px;line-height:1.5;">
+      Objectif ${goalW} kg : vraisemblablement entre le <strong>${f(dFast)}</strong> et le <strong>${f(dSlow)}</strong>.<br>
+      Première semaine exclue, sa chute vient du glycogène et de l'eau. Écart avec le théorique : ${Math.round((trend.ratePerWeek - KG_PER_WEEK)*1000)} g/semaine.</div>`;
+  } else {
+    footer = `<div style="font-size:10.5px;color:var(--muted2);margin-top:10px;line-height:1.5;">Calcul théorique : 7700 kcal par kilo de graisse. Il suppose que ton TDEE est juste.</div>`;
+  }
   el.innerHTML = milestones.map((m, i) => {
     const dateStr = m.date.getDate() + ' ' + months[m.date.getMonth()];
     const color = m.isGoal ? 'var(--accent)' : i === 0 ? 'var(--accent2)' : 'var(--muted2)';
@@ -2676,7 +2794,7 @@ function renderProjections() {
         <div style="font-size:10px;color:var(--muted2)">~${dateStr}</div>
       </div>
     </div>`;
-  }).join('');
+  }).join('') + footer;
 }
 
 function logWeight() {
