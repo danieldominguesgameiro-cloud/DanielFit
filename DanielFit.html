@@ -812,12 +812,12 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     <div class="steps-card">
       <!-- Choix du mode -->
       <div class="act-mode-row">
-        <button id="actModeSteps" class="act-mode-btn active" onclick="setActivityMode('steps')">👟 Pas</button>
-        <button id="actModeWatch" class="act-mode-btn" onclick="setActivityMode('watch')">⌚ Apple Watch</button>
+        <button id="actModeWatch" class="act-mode-btn active" onclick="setActivityMode('watch')">⌚ Apple Watch</button>
+        <button id="actModeSteps" class="act-mode-btn" onclick="setActivityMode('steps')">👟 Pas</button>
       </div>
 
       <!-- Mode PAS -->
-      <div id="actStepsBlock">
+      <div id="actStepsBlock" style="display:none;">
         <div class="steps-row">
           <input type="number" id="stepsInput" class="steps-input" placeholder="ex: 8000" inputmode="numeric" oninput="previewSteps()">
           <button class="btn-validate" onclick="saveSteps()">OK</button>
@@ -827,7 +827,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
       </div>
 
       <!-- Mode APPLE WATCH -->
-      <div id="actWatchBlock" style="display:none;">
+      <div id="actWatchBlock">
         <div class="steps-row">
           <input type="number" id="watchInput" class="steps-input" placeholder="ex: 318" inputmode="numeric" oninput="previewWatch()">
           <button class="btn-validate" onclick="saveWatch()">OK</button>
@@ -1091,7 +1091,7 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
     </div>
 
     <div style="text-align:center;font-size:10px;color:var(--muted2);padding:6px 0 4px;letter-spacing:0.5px;">
-      version <strong id="appVersion">v19 · thème neutre · 05-10-2026</strong>
+      version <strong id="appVersion">v20 · thème neutre · 29-10-2026</strong>
     </div>
   </div>
 
@@ -1225,12 +1225,33 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
   </div>
 </div>
 
+<!-- MODAL: Verification de la composition d'un produit scanne -->
+<div class="overlay" id="scanVerifyModal" onclick="closeModalOutside(event,'scanVerifyModal')">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">📷 Vérifie la composition</div>
+      <button class="modal-close" onclick="closeModal('scanVerifyModal')">✕</button>
+    </div>
+    <div style="font-size:12px;color:var(--muted2);margin-bottom:14px;line-height:1.6;">Valeurs <strong style="color:var(--text)">pour 100 g</strong>, compare avec l'étiquette du paquet et corrige si besoin. La quantité vient juste après.</div>
+    <div class="form-group"><label>Nom</label><input class="form-input" id="svName"></div>
+    <div class="form-grid">
+      <div class="form-group"><label>Kcal / 100 g</label><input class="form-input" id="svCal" type="number" inputmode="decimal" oninput="updateScanVerifyCheck()"></div>
+      <div class="form-group"><label>Protéines / 100 g</label><input class="form-input" id="svProt" type="number" inputmode="decimal" oninput="updateScanVerifyCheck()"></div>
+      <div class="form-group"><label>Glucides / 100 g</label><input class="form-input" id="svCarb" type="number" inputmode="decimal" oninput="updateScanVerifyCheck()"></div>
+      <div class="form-group"><label>Lipides / 100 g</label><input class="form-input" id="svFat" type="number" inputmode="decimal" oninput="updateScanVerifyCheck()"></div>
+    </div>
+    <div id="svCheck" style="font-size:11.5px;line-height:1.5;margin:-2px 0 14px;"></div>
+    <button class="btn-confirm" onclick="confirmScanVerify()">Valider la composition →</button>
+  </div>
+</div>
+
 <!-- MODAL: Barcode Scanner -->
-<div class="overlay" id="barcodeScanModal" style="z-index:600;background:rgba(0,0,0,0.95);align-items:center;justify-content:center;">
-  <div style="width:100%;max-width:430px;padding:20px;text-align:center;">
-    <div style="font-family:'Inter',sans-serif;font-size:22px;letter-spacing:2px;color:#fff;margin-bottom:16px;">SCANNER LE CODE-BARRES</div>
+<div class="overlay" id="barcodeScanModal">
+  <button class="scan-close-fixed" onclick="stopBarcodeScanner()" aria-label="Fermer le scanner">✕</button>
+  <div class="scan-inner">
+    <div class="scan-title">SCANNER LE CODE-BARRES</div>
     <div style="position:relative;width:100%;border-radius:16px;overflow:hidden;background:#000;">
-      <video id="barcodeVideo" style="width:100%;display:block;max-height:60vh;object-fit:cover;" playsinline autoplay muted></video>
+      <video id="barcodeVideo" style="width:100%;display:block;object-fit:cover;" playsinline autoplay muted></video>
       <!-- Viewfinder overlay -->
       <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;">
         <div style="width:72%;aspect-ratio:3/2;border:2px solid var(--accent);border-radius:10px;box-shadow:0 0 0 1000px rgba(0,0,0,0.45);">
@@ -1247,6 +1268,29 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; appearance:no
 </div>
 <style>
 @keyframes scanLine { 0%,100%{top:15%} 50%{top:85%} }
+/* La modale de scan doit rester utilisable quelle que soit l'orientation :
+   elle defile si le contenu depasse, et un bouton de fermeture fixe reste
+   toujours accessible dans le coin, zones sures comprises. */
+#barcodeScanModal {
+  z-index:600; background:rgba(0,0,0,0.95);
+  align-items:flex-start; justify-content:center;
+  overflow-y:auto; -webkit-overflow-scrolling:touch;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+#barcodeScanModal .scan-inner { width:100%; max-width:430px; padding:20px; text-align:center; margin:auto; }
+#barcodeScanModal .scan-title { font-family:'Inter',sans-serif; font-size:20px; letter-spacing:2px; color:#fff; margin:0 44px 16px; }
+#barcodeVideo { max-height:55vh; }
+.scan-close-fixed {
+  position:fixed; z-index:610;
+  top: calc(env(safe-area-inset-top) + 12px); right: calc(env(safe-area-inset-right) + 12px);
+  width:40px; height:40px; border-radius:99px; border:none;
+  background:rgba(255,255,255,0.18); color:#fff; font-size:18px; font-weight:700; cursor:pointer;
+}
+@media (orientation: landscape) {
+  #barcodeScanModal .scan-inner { max-width:560px; padding:10px 20px; }
+  #barcodeScanModal .scan-title { font-size:15px; margin-bottom:8px; }
+  #barcodeVideo { max-height:52vh; }
+}
 </style>
 
 <!-- MODAL: Add custom food -->
@@ -1831,7 +1875,7 @@ function goTab(tab, el) {
 
 function renderToday() { updateMacros(); renderMealList(); renderSportList(); renderStepsToday(); }
 
-let activityMode = 'steps'; // 'steps' | 'watch'
+let activityMode = 'watch'; // 'watch' (par defaut) | 'steps'
 
 function setActivityMode(mode) {
   // Empêche de changer de mode si l'autre a déjà une valeur pour aujourd'hui
@@ -1900,14 +1944,13 @@ function renderStepsToday() {
   if (!stepsInput || !watchInput) return;
   const hasWatch = S.watchCal && S.watchCal[TODAY];
   const hasSteps = S.steps && S.steps[TODAY];
-  // Affiche le bon mode selon ce qui est enregistré
-  if (hasWatch && activityMode !== 'watch') {
-    activityMode = 'watch';
-    document.getElementById('actModeSteps').classList.remove('active');
-    document.getElementById('actModeWatch').classList.add('active');
-    document.getElementById('actStepsBlock').style.display = 'none';
-    document.getElementById('actWatchBlock').style.display = 'block';
-  }
+  // Affiche le bon mode selon ce qui est enregistre ; Apple Watch par defaut
+  const wanted = hasSteps ? 'steps' : (hasWatch ? 'watch' : activityMode);
+  activityMode = wanted;
+  document.getElementById('actModeSteps').classList.toggle('active', wanted === 'steps');
+  document.getElementById('actModeWatch').classList.toggle('active', wanted === 'watch');
+  document.getElementById('actStepsBlock').style.display = wanted === 'steps' ? 'block' : 'none';
+  document.getElementById('actWatchBlock').style.display = wanted === 'watch' ? 'block' : 'none';
   stepsInput.value = hasSteps ? S.steps[TODAY] : '';
   watchInput.value = hasWatch ? S.watchCal[TODAY] : '';
   previewSteps();
@@ -1935,7 +1978,7 @@ function clearActivityToday() {
 
 // ===== Édition activité d'un jour passé =====
 let adDay = null;
-let adMode = 'steps';
+let adMode = 'watch';
 function openActivityModalForDay(d) {
   adDay = d;
   const [_y,_m,_dy]=d.split('-').map(Number); const date=new Date(_y,_m-1,_dy);
@@ -1943,7 +1986,8 @@ function openActivityModalForDay(d) {
   const months=['janv','févr','mars','avr','mai','juin','juil','août','sept','oct','nov','déc'];
   document.getElementById('activityDayTitle').textContent = dayNames[date.getDay()]+' '+date.getDate()+' '+months[date.getMonth()];
   const hasWatch = S.watchCal && S.watchCal[d];
-  adMode = hasWatch ? 'watch' : 'steps';
+  // Apple Watch par defaut, sauf si des pas ont deja ete saisis ce jour-la
+  adMode = (S.steps && S.steps[d]) ? 'steps' : 'watch';
   document.getElementById('adModeSteps').classList.toggle('active', adMode==='steps');
   document.getElementById('adModeWatch').classList.toggle('active', adMode==='watch');
   document.getElementById('adStepsBlock').style.display = adMode==='steps' ? 'block':'none';
@@ -2181,7 +2225,7 @@ function editMeal(i) {
     document.getElementById('fStep1').style.display = 'none';
     document.getElementById('fStep2').classList.add('visible');
     document.getElementById('qtyFoodName').textContent = m.name;
-    document.getElementById('qtyFoodSub').textContent = '📷 Produit scanné · indique la quantité';
+    document.getElementById('qtyFoodSub').innerHTML = scannedSubHtml('📷 Indique la quantité');
     document.getElementById('unitMode').style.display = 'none';
     document.getElementById('gramMode').style.display = 'block';
     unitCountVal = 0;
@@ -2652,14 +2696,18 @@ function renderControl() {
       <div id="chartBody" style="max-height:0;overflow:hidden;transition:max-height 0.4s cubic-bezier(0.4,0,0.2,1);">
         <div style="padding:0 12px 16px;">
           <canvas id="weightChart" style="width:100%;display:block;"></canvas>
-          <div style="display:flex;gap:16px;justify-content:center;margin-top:10px;">
+          <div style="display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:10px;">
             <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted2);">
-              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#2ec5e8" stroke-width="2" stroke-dasharray="4,3"/></svg>
-              Courbe théorique
+              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" style="stroke:var(--blue)" stroke-width="2" stroke-dasharray="4,3"/></svg>
+              Théorique
             </div>
             <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted2);">
-              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" stroke="#18c29c" stroke-width="2.5"/></svg>
+              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" style="stroke:var(--accent)" stroke-width="2.5"/></svg>
               Poids réel
+            </div>
+            <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted2);">
+              <svg width="24" height="10"><line x1="0" y1="5" x2="24" y2="5" style="stroke:var(--purple)" stroke-width="2"/></svg>
+              Tendance
             </div>
           </div>
         </div>
@@ -3318,12 +3366,25 @@ function scanBarcodeForMeal() {
   setTimeout(() => startBarcodeScanner(), 200);
 }
 
+let scanSession = 0;          // chaque demarrage incremente ; les rappels d'une ancienne session sont ignores
+let scanRotateTimer = null;
+let scanListening = false;
+
 async function startBarcodeScanner() {
   const modal = document.getElementById('barcodeScanModal');
-  const status = document.getElementById('scannerStatus');
   modal.classList.add('open');
+  attachScanRotationGuard();
+  await openScannerCamera();
+}
+
+// Ouvre (ou rouvre) la camera sans toucher a la modale
+async function openScannerCamera() {
+  const session = ++scanSession;
+  const status = document.getElementById('scannerStatus');
   status.textContent = 'Chargement de la caméra...';
   status.style.color = 'rgba(255,255,255,0.6)';
+
+  releaseScannerCamera();
 
   try {
     if (!window.ZXing) {
@@ -3334,11 +3395,11 @@ async function startBarcodeScanner() {
         document.head.appendChild(s);
       });
     }
+    if (session !== scanSession) return;   // une rotation a deja relance entre-temps
 
     const video = document.getElementById('barcodeVideo');
     const reader = new ZXing.BrowserMultiFormatReader();
     zxingContinuous = reader;
-
     status.textContent = 'Cadre le code-barres dans le rectangle';
 
     let detected = false;
@@ -3346,6 +3407,7 @@ async function startBarcodeScanner() {
       { video: { facingMode: 'environment' } },
       video,
       (result, err) => {
+        if (session !== scanSession) return;   // rappel d'une session perimee
         if (result && !detected) {
           detected = true;
           status.style.color = 'var(--accent)';
@@ -3355,10 +3417,20 @@ async function startBarcodeScanner() {
         }
       }
     );
+    if (session !== scanSession) { try { reader.reset(); } catch(e) {} return; }
 
+    // Si iOS coupe le flux (rotation, appel, verrouillage), on relance proprement
+    if (video.srcObject) {
+      video.srcObject.getTracks().forEach(t => {
+        t.addEventListener('ended', () => {
+          if (session === scanSession && isScannerOpen()) scheduleScannerRestart();
+        });
+      });
+    }
   } catch(e) {
+    if (session !== scanSession) return;
     status.style.color = '#ff6b6b';
-    if (e.name === 'NotAllowedError') {
+    if (e && e.name === 'NotAllowedError') {
       status.textContent = '❌ Accès caméra refusé. Autorise dans les réglages iPhone.';
     } else {
       status.textContent = '❌ Caméra indisponible. Saisis le code manuellement.';
@@ -3366,19 +3438,62 @@ async function startBarcodeScanner() {
   }
 }
 
-function stopBarcodeScanner() {
-  const modal = document.getElementById('barcodeScanModal');
-  modal.classList.remove('open');
+function isScannerOpen() {
+  const m = document.getElementById('barcodeScanModal');
+  return m && m.classList.contains('open');
+}
+
+// Libere la camera et le lecteur, sans fermer la modale
+function releaseScannerCamera() {
   if (zxingContinuous) {
     try { zxingContinuous.reset(); } catch(e) {}
     zxingContinuous = null;
   }
-  // Stop all video tracks
   const video = document.getElementById('barcodeVideo');
   if (video && video.srcObject) {
-    video.srcObject.getTracks().forEach(t => t.stop());
+    try { video.srcObject.getTracks().forEach(t => t.stop()); } catch(e) {}
     video.srcObject = null;
   }
+}
+
+// A la rotation, iOS fige souvent le flux video. On attend que l'ecran se
+// stabilise puis on relance la camera dans la nouvelle orientation.
+function scheduleScannerRestart() {
+  clearTimeout(scanRotateTimer);
+  scanRotateTimer = setTimeout(() => {
+    if (isScannerOpen()) openScannerCamera();
+  }, 450);
+}
+
+function onScanViewportChange() {
+  if (isScannerOpen()) scheduleScannerRestart();
+}
+
+function attachScanRotationGuard() {
+  if (scanListening) return;
+  scanListening = true;
+  window.addEventListener('orientationchange', onScanViewportChange);
+  if (screen.orientation && screen.orientation.addEventListener) {
+    screen.orientation.addEventListener('change', onScanViewportChange);
+  }
+}
+
+function detachScanRotationGuard() {
+  if (!scanListening) return;
+  scanListening = false;
+  window.removeEventListener('orientationchange', onScanViewportChange);
+  if (screen.orientation && screen.orientation.removeEventListener) {
+    screen.orientation.removeEventListener('change', onScanViewportChange);
+  }
+}
+
+function stopBarcodeScanner() {
+  scanSession++;                 // invalide tout rappel encore en vol
+  clearTimeout(scanRotateTimer);
+  detachScanRotationGuard();
+  const modal = document.getElementById('barcodeScanModal');
+  modal.classList.remove('open');
+  releaseScannerCamera();
 }
 
 function manualBarcodeEntry() {
@@ -3406,7 +3521,8 @@ async function fetchProductByBarcode(barcode) {
         // Poids du paquet (product_quantity) ou, à défaut, taille d'une portion (serving_quantity)
         const suggestedQty = parseFloat(p.product_quantity) || parseFloat(p.serving_quantity) || null;
         // Ouvre la saisie rapide pré-remplie (quantité du paquet si connue, sinon 100 g), l'utilisateur ajuste si besoin
-        openScannedFoodEntry(name, cal100, prot100, carb100, fat100, suggestedQty);
+        // Etape 1 : verification de la composition ; la quantite vient ensuite
+        openScanVerify({ name, cal100, prot100, carb100, fat100 }, suggestedQty, false);
       } else {
         barcodeForMeal = false;
         showToast('⚠️ Produit introuvable');
@@ -3451,20 +3567,79 @@ async function fetchProductByBarcode(barcode) {
   }
 }
 
-// Produit scanné (ponctuel) : on ouvre l'étape quantité (en grammes) avec calcul auto, sans l'enregistrer
-function openScannedFoodEntry(name, cal100, prot100, carb100, fat100, suggestedQty) {
+// ----- Verification de la composition d'un produit scanne -----
+let scanPending = null; // { qty, isEdit, editIdx }
+
+function openScanVerify(food, qty, isEdit) {
+  scanPending = { qty: qty || null, isEdit: !!isEdit, editIdx: isEdit ? editMealIdx : null };
+  document.getElementById('svName').value = food.name || '';
+  document.getElementById('svCal').value  = food.cal100  ?? '';
+  document.getElementById('svProt').value = food.prot100 ?? '';
+  document.getElementById('svCarb').value = food.carb100 ?? '';
+  document.getElementById('svFat').value  = food.fat100  ?? '';
+  updateScanVerifyCheck();
+  setTimeout(() => openModal('scanVerifyModal'), 250);
+}
+
+// Controle de coherence : 4 kcal/g pour proteines et glucides, 9 pour lipides.
+// Un ecart important signale souvent une erreur de saisie dans la base.
+function updateScanVerifyCheck() {
+  const el = document.getElementById('svCheck');
+  if (!el) return;
+  const num = id => parseFloat(String(document.getElementById(id).value).replace(',', '.')) || 0;
+  const cal = num('svCal'), p = num('svProt'), c = num('svCarb'), f = num('svFat');
+  if (!cal || (!p && !c && !f)) { el.innerHTML = ''; return; }
+  const est = Math.round(p * 4 + c * 4 + f * 9);
+  const gap = Math.abs(est - cal) / Math.max(cal, 1);
+  if (gap <= 0.15) {
+    el.innerHTML = `<span style="color:var(--accent)">✓ Cohérent</span> <span style="color:var(--muted2)">: les macros donnent ${est} kcal pour ${Math.round(cal)} affichées.</span>`;
+  } else {
+    el.innerHTML = `<span style="color:var(--accent2)">⚠️ À vérifier</span> <span style="color:var(--muted2)">: les macros donnent ${est} kcal, l'étiquette ${Math.round(cal)}. Une valeur est peut-être fausse.</span>`;
+  }
+}
+
+function confirmScanVerify() {
+  const num = id => parseFloat(String(document.getElementById(id).value).replace(',', '.')) || 0;
+  const name = document.getElementById('svName').value.trim() || 'Produit scanné';
+  const cal100 = num('svCal');
+  if (!cal100) { showToast('Indique au moins les kcal'); return; }
+  const food = { name, cal100, prot100: num('svProt'), carb100: num('svCarb'), fat100: num('svFat') };
+  closeModal('scanVerifyModal');
+  const pend = scanPending || { qty: null, isEdit: false, editIdx: null };
+  scanPending = null;
+  openScannedFoodEntry(food.name, food.cal100, food.prot100, food.carb100, food.fat100, pend.qty, pend.isEdit ? pend.editIdx : null);
+}
+
+// Depuis l'etape quantite : revenir corriger la composition
+function editScannedComposition() {
+  if (!selectedFood || !selectedFood._scanned) return;
+  const qty = parseFloat(document.getElementById('qtyInput').value) || null;
+  const isEdit = editMealIdx !== null;
+  closeModal('foodModal');
+  openScanVerify(selectedFood, qty, isEdit);
+}
+
+function scannedSubHtml(text) {
+  return `${text} · <a href="#" onclick="event.preventDefault();editScannedComposition()" style="color:var(--accent);font-weight:700;text-decoration:none;">✏️ Composition</a>`;
+}
+
+// Produit scanné (ponctuel) : étape quantité (en grammes) avec calcul auto, sans l'enregistrer
+function openScannedFoodEntry(name, cal100, prot100, carb100, fat100, suggestedQty, keepEditIdx) {
   // selectedFood temporaire (pas ajouté à S.foods) → réutilise le flux quantité normal
   selectedFood = { name, cal100, prot100, carb100, fat100, fixedUnit: null, _scanned: true };
-  editMealIdx = null;
+  const isEdit = (keepEditIdx !== undefined && keepEditIdx !== null);
+  editMealIdx = isEdit ? keepEditIdx : null;
   // activeDayEdit reste tel quel (jour en cours d'édition ou aujourd'hui)
   setTimeout(() => {
     openModal('foodModal');
     document.getElementById('fStep1').style.display = 'none';
     document.getElementById('fStep2').classList.add('visible');
+    document.getElementById('foodModalTitle').textContent = isEdit ? 'Modifier la quantité' : 'Ajouter un repas';
+    document.querySelector('#fStep2 .btn-confirm').textContent = isEdit ? 'Modifier ✓' : 'Ajouter au repas';
     document.getElementById('qtyFoodName').textContent = name;
-    document.getElementById('qtyFoodSub').textContent = suggestedQty
-      ? `📷 Produit scanné · quantité du paquet pré-remplie (${suggestedQty}g), modifie si besoin`
-      : '📷 Produit scanné · indique la quantité';
+    document.getElementById('qtyFoodSub').innerHTML = scannedSubHtml(suggestedQty && !isEdit
+      ? `📷 Quantité du paquet pré-remplie (${suggestedQty} g)`
+      : '📷 Indique la quantité');
     document.getElementById('unitMode').style.display = 'none';
     document.getElementById('gramMode').style.display = 'block';
     unitCountVal = 0;
@@ -3766,6 +3941,38 @@ function addSport(id) {
 
 function openModal(id) { document.getElementById(id).classList.add('open'); }
 
+// Droite de tendance sur TOUTES les pesees du plan, premiere semaine exclue
+// (glycogene + eau). Regression lineaire par moindres carres.
+function chartTrend() {
+  const startD = new Date(START_DATE + 'T12:00:00');
+  const anchor = new Date(startD); anchor.setDate(anchor.getDate() + 7);
+  const pts = (S.weights || [])
+    .filter(e => new Date(e.date + 'T12:00:00') >= anchor)
+    .map(e => ({ d: Math.round((new Date(e.date + 'T12:00:00') - startD) / 86400000), v: e.val }));
+  if (pts.length < 3) return null;
+  if (pts[pts.length - 1].d - pts[0].d < 7) return null;
+  const n = pts.length;
+  const md = pts.reduce((a, p) => a + p.d, 0) / n;
+  const mv = pts.reduce((a, p) => a + p.v, 0) / n;
+  let num = 0, den = 0;
+  for (const p of pts) { num += (p.d - md) * (p.v - mv); den += (p.d - md) * (p.d - md); }
+  if (den === 0) return null;
+  const slope = num / den;
+  return { slope, intercept: mv - slope * md, d0: pts[0].d, d1: pts[pts.length - 1].d, n };
+}
+
+function todayIdxForTrend() {
+  const startD = new Date(START_DATE + 'T12:00:00');
+  return Math.round((new Date(TODAY + 'T12:00:00') - startD) / 86400000);
+}
+
+function cssVar(name, fallback) {
+  try {
+    const v = getComputedStyle(document.body).getPropertyValue(name).trim();
+    return v || fallback;
+  } catch(e) { return fallback; }
+}
+
 function drawWeightChart() {
   const canvas = document.getElementById('weightChart');
   if (!canvas) return;
@@ -3815,8 +4022,16 @@ function drawWeightChart() {
   });
   real.sort((a, b) => a.d - b.d);
 
+  const trend = chartTrend();
+  const trendPts = [];
+  if (trend) {
+    const tEnd = Math.min(daysElapsed, Math.max(trend.d1, todayIdxForTrend()));
+    trendPts.push({ d: trend.d0, v: trend.intercept + trend.slope * trend.d0 });
+    trendPts.push({ d: tEnd,     v: trend.intercept + trend.slope * tEnd });
+  }
+
   // Y range
-  const allVals = [...theoretical.map(p => p.v), ...real.map(p => p.v)];
+  const allVals = [...theoretical.map(p => p.v), ...real.map(p => p.v), ...trendPts.map(p => p.v)];
   const yMin = Math.floor(Math.min(...allVals) - 0.5);
   const yMax = Math.ceil(Math.max(...allVals) + 0.5);
 
@@ -3825,9 +4040,15 @@ function drawWeightChart() {
 
   ctx.clearRect(0, 0, W, H);
 
-  const gridColor = isLight ? 'rgba(0,0,0,0.07)' : 'rgba(255,255,255,0.06)';
-  const textColor = isLight ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.35)';
-  const accentTextColor = isLight ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.6)';
+  const C_THEO  = cssVar('--blue', '#4f6d8f');
+  const C_REAL  = cssVar('--accent', '#4a7c62');
+  const C_GOAL  = cssVar('--accent2', '#b8763a');
+  const C_TREND = cssVar('--purple', '#7a6a8a');
+  // Couleurs lues dans le theme actif (la classe light-theme active en fait
+  // le mode sombre, d'ou les graduations invisibles en theme clair avant)
+  const gridColor = cssVar('--border', 'rgba(0,0,0,0.08)');
+  const textColor = cssVar('--muted2', '#8a918e');
+  const accentTextColor = cssVar('--text2', '#4d5654');
 
   // Horizontal grid + Y labels
   ctx.lineWidth = 1;
@@ -3838,7 +4059,7 @@ function drawWeightChart() {
     ctx.strokeStyle = gridColor;
     ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
     ctx.fillStyle = textColor;
-    ctx.font = '10px DM Sans, sans-serif';
+    ctx.font = '10px Inter, sans-serif';
     ctx.textAlign = 'right';
     ctx.fillText(v.toFixed(1), PAD.left - 5, y + 3.5);
   }
@@ -3847,20 +4068,31 @@ function drawWeightChart() {
   const dayLetters = ['Di','Lu','Ma','Me','Je','Ve','Sa'];
   const shortMonths2 = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','nov','déc'];
   ctx.textAlign = 'center';
+  let lastLabelRight = -Infinity;
   for (let d = 0; d <= daysElapsed; d++) {
     const date = new Date(startD); date.setDate(date.getDate() + d);
     const dow = date.getDay(); // 0=Sun,1=Mon
-    // Show label every Thursday or day 0
-    if (dow === 4 || d === 0) {
+    // Etiquette chaque jeudi, plus le jour de depart s'il n'est pas trop pres d'un jeudi
+    const nearThu = (() => { for (let k = 1; k <= 3; k++) { const t = new Date(startD); t.setDate(t.getDate() + k); if (t.getDay() === 4) return true; } return false; })();
+    if (dow === 4 || (d === 0 && !nearThu)) {
       const x = xOf(d);
       // Vertical week line
-      ctx.strokeStyle = dow === 4 ? 'rgba(24,194,156,0.12)' : gridColor;
+      ctx.strokeStyle = gridColor;
       ctx.lineWidth = dow === 4 ? 1.5 : 1;
       ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + cH); ctx.stroke();
       // Label
-      ctx.fillStyle = dow === 4 ? 'rgba(24,194,156,0.6)' : textColor;
-      ctx.font = dow === 4 ? 'bold 9px DM Sans, sans-serif' : '9px DM Sans, sans-serif';
-      ctx.fillText('Je ' + date.getDate() + '/' + (date.getMonth()+1), x, H - 6);
+      ctx.fillStyle = dow === 4 ? accentTextColor : textColor;
+      ctx.font = dow === 4 ? 'bold 9px Inter, sans-serif' : '9px Inter, sans-serif';
+      // Etiquette mesuree : maintenue dans le cadre, et sautee si elle
+      // toucherait la precedente (ecran etroit, longue periode)
+      const lbl = dayLetters[dow] + ' ' + date.getDate() + '/' + (date.getMonth()+1);
+      const lw = ctx.measureText(lbl).width;
+      const xc = Math.min(Math.max(x, lw / 2 + 2), W - lw / 2 - 2);
+      if (xc - lw / 2 >= lastLabelRight + 6) {
+        ctx.textAlign = 'center';
+        ctx.fillText(lbl, xc, H - 6);
+        lastLabelRight = xc + lw / 2;
+      }
     }
   }
 
@@ -3870,19 +4102,19 @@ function drawWeightChart() {
   const todayIdx = Math.round((todayDate2 - startD) / 86400000);
   if (todayIdx >= 0 && todayIdx <= daysElapsed) {
     const x = xOf(todayIdx);
-    ctx.strokeStyle = 'rgba(255,107,53,0.4)';
+    ctx.strokeStyle = C_GOAL; ctx.globalAlpha = 0.5;
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4, 3]);
     ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + cH); ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.fillStyle = 'rgba(255,107,53,0.7)';
-    ctx.font = 'bold 9px DM Sans, sans-serif';
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+    ctx.fillStyle = C_GOAL;
+    ctx.font = 'bold 9px Inter, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('auj.', x, PAD.top - 4);
   }
 
-  // Theoretical curve (dashed blue)
-  ctx.strokeStyle = '#2ec5e8';
+  // Theoretical curve (dashed)
+  ctx.strokeStyle = C_THEO;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 4]);
   ctx.beginPath();
@@ -3890,21 +4122,33 @@ function drawWeightChart() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Goal line (orange dashed)
-  ctx.strokeStyle = '#ff7a3d';
+  // Goal line (dashed)
+  ctx.strokeStyle = C_GOAL;
   ctx.lineWidth = 1;
   ctx.setLineDash([3, 5]);
   const goalY = yOf(GOAL_WEIGHT_DEFAULT);
   ctx.beginPath(); ctx.moveTo(PAD.left, goalY); ctx.lineTo(PAD.left + cW, goalY); ctx.stroke();
   ctx.setLineDash([]);
-  ctx.fillStyle = '#ff7a3d';
-  ctx.font = '9px DM Sans, sans-serif';
+  ctx.fillStyle = C_GOAL;
+  ctx.font = '9px Inter, sans-serif';
   ctx.textAlign = 'left';
-  ctx.fillText('85kg', PAD.left + 3, goalY - 3);
+  ctx.fillText(GOAL_WEIGHT_DEFAULT + ' kg', PAD.left + 3, goalY - 3);
+
+  // Trend line (solid, under the real curve)
+  if (trendPts.length === 2) {
+    ctx.strokeStyle = C_TREND;
+    ctx.lineWidth = 3;
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.moveTo(xOf(trendPts[0].d), yOf(trendPts[0].v));
+    ctx.lineTo(xOf(trendPts[1].d), yOf(trendPts[1].v));
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // Real curve (solid green)
   if (real.length > 0) {
-    ctx.strokeStyle = '#18c29c';
+    ctx.strokeStyle = C_REAL;
     ctx.lineWidth = 2.5;
     ctx.lineJoin = 'round';
     ctx.beginPath();
@@ -3915,9 +4159,9 @@ function drawWeightChart() {
     real.forEach(p => {
       ctx.beginPath();
       ctx.arc(xOf(p.d), yOf(p.v), 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#18c29c';
+      ctx.fillStyle = C_REAL;
       ctx.fill();
-      ctx.strokeStyle = isLight ? '#271d39' : '#fff';
+      ctx.strokeStyle = cssVar('--surface', '#fff');
       ctx.lineWidth = 1.5;
       ctx.stroke();
     });
@@ -4040,15 +4284,15 @@ loadState();
     </div>
     <div id="activityDayTitle" style="font-size:13px;font-weight:700;color:var(--muted2);margin-bottom:16px;"></div>
     <div class="act-mode-row">
-      <button id="adModeSteps" class="act-mode-btn active" onclick="adSetMode('steps')">👟 Pas</button>
-      <button id="adModeWatch" class="act-mode-btn" onclick="adSetMode('watch')">⌚ Apple Watch</button>
+      <button id="adModeWatch" class="act-mode-btn active" onclick="adSetMode('watch')">⌚ Apple Watch</button>
+      <button id="adModeSteps" class="act-mode-btn" onclick="adSetMode('steps')">👟 Pas</button>
     </div>
-    <div id="adStepsBlock">
+    <div id="adStepsBlock" style="display:none;">
       <div class="input-label">Nombre de pas</div>
       <input class="qty-number-input" type="number" inputmode="numeric" id="adStepsInput" placeholder="ex: 8000" oninput="adPreview()">
       <div id="adStepsRes" style="text-align:center;font-family:var(--font-display);font-weight:800;font-size:17px;color:var(--mint);margin-top:12px;"></div>
     </div>
-    <div id="adWatchBlock" style="display:none;">
+    <div id="adWatchBlock">
       <div class="input-label">Kcal actives (anneau Bouger)</div>
       <input class="qty-number-input" type="number" inputmode="numeric" id="adWatchInput" placeholder="ex: 318" oninput="adPreview()">
     </div>
